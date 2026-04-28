@@ -7,9 +7,9 @@ from app.bot.keyboards.navigation import build_navigation_keyboard
 
 def user_main_menu_keyboard() -> InlineKeyboardMarkup:
     return build_navigation_keyboard(
-        ("My subscription", "menu:user:subscription"),
-        ("Tariffs", "menu:user:tariffs"),
-        ("Support", "menu:user:support"),
+        ("Моя подписка", "menu:user:subscription"),
+        ("Тарифы", "menu:user:tariffs"),
+        ("Поддержка", "menu:user:support"),
         include_home=False,
     )
 

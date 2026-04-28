@@ -42,7 +42,7 @@ target-version = ["py312"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = [".vendor", ".tmp", "backups"]
+extend-exclude = [".vendor", ".tmp", ".tooling", "backups"]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "SIM", "UP"]

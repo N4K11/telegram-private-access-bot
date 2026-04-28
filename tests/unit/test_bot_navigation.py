@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.bot.keyboards.admin import admin_main_menu_keyboard
 from app.bot.keyboards.user import user_main_menu_keyboard, user_section_keyboard
 from app.bot.routers.admin.dashboard import admin_section
 from app.bot.routers.common import edit_or_answer
@@ -34,9 +35,12 @@ class DummyCallback:
         self.message = DummyMessage(fail_edit=fail_edit)
         self.from_user = DummyUser(user_id=1)
         self.answer_count = 0
+        self.answer_payloads: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
-    async def answer(self) -> None:
+    async def answer(self, *args, **kwargs) -> None:
         self.answer_count += 1
+        self.answer_payloads.append((args, kwargs))
+
 
 
 def _flatten_button_texts(markup) -> list[str]:
@@ -50,7 +54,7 @@ async def test_start_handler_sends_new_message() -> None:
 
     assert len(message.answer_calls) == 1
     assert message.edit_calls == []
-    assert "Hello, Anna." in message.answer_calls[0][0]
+    assert "Здравствуйте, Anna." in message.answer_calls[0][0]
 
 
 async def test_edit_or_answer_edits_existing_callback_message() -> None:
@@ -80,7 +84,7 @@ async def test_user_section_navigation_renders_back_and_home() -> None:
 
     assert callback.message.edit_calls
     _, markup = callback.message.edit_calls[0]
-    assert _flatten_button_texts(markup) == ["Back", "Home"]
+    assert _flatten_button_texts(markup) == ["Назад", "Главное меню"]
 
 
 async def test_admin_section_navigation_renders_back_and_home() -> None:
@@ -89,17 +93,36 @@ async def test_admin_section_navigation_renders_back_and_home() -> None:
     await admin_section(callback)
 
     assert callback.message.edit_calls
-    _, markup = callback.message.edit_calls[0]
-    assert _flatten_button_texts(markup) == ["Back", "Home"]
+    text, markup = callback.message.edit_calls[0]
+    assert "Раздел администратора: Аналитика" in text
+    assert _flatten_button_texts(markup) == ["Назад", "Главное меню"]
+
 
 
 def test_user_main_menu_keyboard_has_expected_buttons() -> None:
     assert _flatten_button_texts(user_main_menu_keyboard()) == [
-        "My subscription",
-        "Tariffs",
-        "Support",
+        "Моя подписка",
+        "Тарифы",
+        "Поддержка",
     ]
 
 
+
 def test_user_section_keyboard_has_back_and_home() -> None:
-    assert _flatten_button_texts(user_section_keyboard()) == ["Back", "Home"]
+    assert _flatten_button_texts(user_section_keyboard()) == ["Назад", "Главное меню"]
+
+
+
+def test_admin_main_menu_keyboard_has_expected_buttons() -> None:
+    assert _flatten_button_texts(admin_main_menu_keyboard()) == [
+        "📊 Аналитика",
+        "👥 Пользователи",
+        "💳 Платежи",
+        "🧾 Тарифы",
+        "📣 Каналы",
+        "✍️ Тексты",
+        "📢 Рассылка",
+        "💾 Бэкапы",
+        "⚙️ Настройки",
+        "🧪 Диагностика",
+    ]

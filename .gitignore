@@ -18,3 +18,5 @@ build/
 backups/*
 !backups/.gitkeep
 postgres_data/
+.tooling/
+.rufftool/

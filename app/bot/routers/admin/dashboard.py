@@ -13,17 +13,17 @@ router = Router(name="admin")
 router.message.filter(AdminFilter())
 router.callback_query.filter(AdminFilter())
 
-ADMIN_SECTIONS = {
-    "analytics",
-    "users",
-    "payments",
-    "tariffs",
-    "channels",
-    "texts",
-    "broadcasts",
-    "backups",
-    "settings",
-    "diagnostics",
+ADMIN_SECTION_LABELS = {
+    "analytics": "Аналитика",
+    "users": "Пользователи",
+    "payments": "Платежи",
+    "tariffs": "Тарифы",
+    "channels": "Каналы",
+    "texts": "Тексты",
+    "broadcasts": "Рассылка",
+    "backups": "Бэкапы",
+    "settings": "Настройки",
+    "diagnostics": "Диагностика",
 }
 
 
@@ -52,12 +52,13 @@ async def admin_section(callback: CallbackQuery) -> None:
         await admin_home(callback)
         return
 
-    if section not in ADMIN_SECTIONS:
+    label = ADMIN_SECTION_LABELS.get(section)
+    if label is None:
         await callback.answer()
         return
 
     await edit_or_answer(
         callback,
-        text=render_text("admin_section", section=section.title()),
+        text=render_text("admin_section", section=label),
         reply_markup=admin_section_keyboard(),
     )

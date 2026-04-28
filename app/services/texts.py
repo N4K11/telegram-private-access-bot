@@ -1,27 +1,38 @@
 from __future__ import annotations
 
+from html import escape
+
 
 class _SafeDict(dict[str, object]):
     def __missing__(self, key: str) -> str:
         return "{" + key + "}"
 
+    def __getitem__(self, key: str) -> object:
+        value = super().__getitem__(key)
+        if isinstance(value, str):
+            return escape(value)
+        return value
+
 
 DEFAULT_TEXTS: dict[str, str] = {
     "start": (
-        "Hello, {first_name}.\n\n"
-        "This bot will manage private channel access, subscriptions and payments."
+        "Здравствуйте, {first_name}.\n\n"
+        "Этот бот управляет доступом в приватный канал, подписками и платежами."
     ),
     "user_subscription": (
-        "Subscription\n\n"
-        "The subscription summary screen is connected and will be expanded in the next stage."
+        "Подписка\n\n"
+        "Экран статуса подписки подключен. Полная логика подписок появится на следующих этапах."
     ),
-    "user_tariffs": "Tariffs\n\nAvailable plans will appear here.",
-    "user_support": "Support\n\nSupport instructions will appear here.",
+    "user_tariffs": "Тарифы\n\nНиже показаны доступные тарифы.",
+    "user_support": (
+        "Поддержка\n\n"
+        "Если возникли вопросы, свяжитесь с администратором, указанным в описании бота."
+    ),
     "admin_dashboard": (
-        "Admin panel\n\n"
-        "Core sections are wired and will be expanded in the next implementation stages."
+        "Панель администратора\n\n"
+        "Управляйте тарифами, каналами и следующими этапами настройки прямо из Telegram."
     ),
-    "admin_section": "Admin section: {section}",
+    "admin_section": "Раздел администратора: {section}",
 }
 
 
