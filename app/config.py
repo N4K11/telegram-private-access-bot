@@ -1,4 +1,4 @@
-﻿from collections.abc import Iterable
+from collections.abc import Iterable
 from functools import lru_cache
 
 from pydantic import Field, SecretStr, field_validator
@@ -49,6 +49,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        enable_decoding=False,
     )
 
     @field_validator("admin_ids", mode="before")

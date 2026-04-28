@@ -18,6 +18,17 @@ def test_csv_values_are_parsed() -> None:
     assert settings.crypto_pay_accepted_assets == ["TON", "USDT"]
 
 
+def test_env_csv_values_are_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BOT_TOKEN", "123:token")
+    monkeypatch.setenv("ADMIN_IDS", "1,2,3")
+    monkeypatch.setenv("CRYPTO_PAY_ACCEPTED_ASSETS", "ton,usdt")
+
+    settings = Settings()
+
+    assert settings.admin_ids == [1, 2, 3]
+    assert settings.crypto_pay_accepted_assets == ["TON", "USDT"]
+
+
 def test_runtime_validation_requires_token_and_admins() -> None:
     settings = Settings.model_validate({})
 
