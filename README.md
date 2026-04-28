@@ -1,20 +1,20 @@
 # Telegram Private Access Bot
 
-Production-oriented Telegram bot for selling access to private channels with Telegram Stars as the primary payment method and optional Crypto Pay support.
+Production-oriented Telegram bot for selling access to private channels with Telegram Stars as the default payment method and optional Crypto Pay support.
 
-## Current status
+## Implemented features
 
-Stages 1 and 2 are implemented and verified:
-
-- project skeleton;
-- settings and logging;
-- async SQLAlchemy models;
-- Alembic bootstrap;
-- Docker and Docker Compose;
-- baseline user/admin bot wiring;
-- inline menu navigation with edit fallback;
-- user sync middleware that persists Telegram users;
-- initial unit, integration and smoke tests.
+- Russian user and admin inline navigation.
+- Channel and tariff management from the admin panel.
+- Telegram Stars payments with idempotent processing.
+- Optional Crypto Pay invoices with reconciliation worker and webhook processor.
+- Personal invite links for active subscriptions.
+- Automatic subscription expiration and channel access revocation.
+- Admin analytics, user directory, direct messaging and manual subscription actions.
+- Broadcast campaigns with queue processing.
+- Managed text templates with mojibake protection and reset to defaults.
+- Daily and manual backups with retention and Telegram document delivery.
+- Healthcheck, JSON logs, anti-spam and rate limiting middleware.
 
 ## Stack
 
@@ -23,16 +23,9 @@ Stages 1 and 2 are implemented and verified:
 - SQLAlchemy async
 - Alembic
 - PostgreSQL for production
-- APScheduler for background jobs
-- pytest, ruff, black, mypy
-
-## Quick start
-
-1. Create a virtual environment.
-2. Install the project with dev dependencies.
-3. Copy `.env.example` to `.env` and fill in secrets.
-4. Run migrations.
-5. Start the bot.
+- SQLite for local tests only
+- Docker / Docker Compose
+- pytest / Ruff
 
 ## Local commands
 
@@ -42,21 +35,48 @@ ruff check .
 pytest -q
 alembic upgrade head
 python -m app.main
+python -m app.healthcheck
 ```
 
 ## Docker
 
 ```bash
+docker compose config
 docker compose up -d --build
 ```
 
-## Current bot behavior
+The bot container includes a healthcheck based on `python -m app.healthcheck`.
 
-- `/start` always sends a new main menu message.
-- User navigation after `/start` works through inline callback menus.
-- `/admin` is limited by `ADMIN_IDS` and opens the inline admin menu.
-- Callback menu edits fall back to sending a new message if Telegram rejects the edit.
+## Environment
 
-## Next stages
+Start from `.env.example` and fill at least:
 
-The next implementation stages will add channels, tariffs, Telegram Stars payments, invite links, expiring subscriptions, broadcasts, backups and production hardening.
+- `BOT_TOKEN`
+- `ADMIN_IDS`
+- `DATABASE_URL`
+
+Optional production flags:
+
+- `CRYPTO_PAY_ENABLED`
+- `CRYPTO_PAY_TOKEN`
+- `BACKUP_*`
+- `RATE_LIMIT_*`
+- `PUBLIC_WEBHOOK_URL`
+
+## Project layout
+
+- `app/` application code.
+- `app/bot/` routers, filters, keyboards and middlewares.
+- `app/services/` payment, invite, analytics, backup and text logic.
+- `app/db/` models, repositories and session helpers.
+- `app/workers/` background workers.
+- `tests/` unit and integration tests.
+- `deploy/` deployment artifacts including the systemd example.
+
+See also:
+
+- `DEPLOY.md`
+- `TESTING.md`
+- `PROJECT_OVERVIEW.md`
+- `CHANGELOG.md`
+- `BACKUP_RESTORE.md`

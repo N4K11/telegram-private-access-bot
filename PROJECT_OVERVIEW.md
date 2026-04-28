@@ -1,23 +1,38 @@
-﻿# Project Overview
+# Project Overview
 
 ## Goal
 
-Build a Telegram bot that sells time-limited access to one or more private Telegram channels, grants access after payment, and revokes access when subscriptions expire.
+The project sells time-limited access to private Telegram channels, grants access after payment and revokes access after expiration.
 
-## Layout
+## Main runtime flow
 
-- `app/`: application source code.
-- `app/bot/`: aiogram routers, filters, middlewares and keyboards.
-- `app/services/`: domain services.
-- `app/db/`: models, repositories and session management.
-- `app/workers/`: background jobs.
-- `tests/`: unit, integration and smoke tests.
-- `alembic/`: migrations.
-- `deploy/`: deployment artifacts.
+1. A Telegram user opens `/start`.
+2. Middleware syncs the user into the database.
+3. The user selects a tariff.
+4. Payment is processed through Telegram Stars or optional Crypto Pay.
+5. The bot activates or extends the subscription.
+6. The bot generates a personal invite link.
+7. Background workers revoke access after expiration and process broadcasts, backups and crypto reconciliation.
 
-## Stage 1 decisions
+## Architecture
 
-- Keep runtime secrets in the environment only.
-- Keep PostgreSQL as the production database target.
-- Allow SQLite only for local tests and bootstrap verification.
-- Front-load the core schema so future stages can extend behavior without a structural rewrite.
+- `app/main.py` bootstraps settings, logging, DB, dispatcher and workers.
+- `app/bot/` contains filters, routers, keyboards and middlewares.
+- `app/services/` contains business logic.
+- `app/db/` contains schema and repositories.
+- `app/workers/` contains polling background jobs.
+
+## Operational hardening
+
+- JSON structured logs.
+- Runtime healthcheck.
+- Container healthcheck and graceful stop settings.
+- Rate-limit and duplicate-request protection.
+- Backup retention and restore notes.
+- Audit log records for sensitive operations.
+
+## Deployment model
+
+- Docker Compose for container deployment.
+- PostgreSQL as the production database.
+- Optional systemd example for host-managed processes.

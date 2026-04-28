@@ -14,16 +14,16 @@ router.message.filter(AdminFilter())
 router.callback_query.filter(AdminFilter())
 
 ADMIN_SECTION_LABELS = {
-    "analytics": "Аналитика",
-    "users": "Пользователи",
-    "payments": "Платежи",
-    "tariffs": "Тарифы",
-    "channels": "Каналы",
-    "texts": "Тексты",
-    "broadcasts": "Рассылка",
-    "backups": "Бэкапы",
-    "settings": "Настройки",
-    "diagnostics": "Диагностика",
+    "analytics": "\u0410\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0430",
+    "users": "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438",
+    "payments": "\u041f\u043b\u0430\u0442\u0435\u0436\u0438",
+    "tariffs": "\u0422\u0430\u0440\u0438\u0444\u044b",
+    "channels": "\u041a\u0430\u043d\u0430\u043b\u044b",
+    "texts": "\u0422\u0435\u043a\u0441\u0442\u044b",
+    "broadcasts": "\u0420\u0430\u0441\u0441\u044b\u043b\u043a\u0430",
+    "backups": "\u0411\u044d\u043a\u0430\u043f\u044b",
+    "settings": "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438",
+    "diagnostics": "\u0414\u0438\u0430\u0433\u043d\u043e\u0441\u0442\u0438\u043a\u0430",
 }
 
 

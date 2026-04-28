@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -11,6 +11,8 @@ from app.bot.factory import build_dispatcher
 from app.config import RuntimeConfigurationError, get_settings
 from app.db.session import create_async_engine, create_session_factory
 from app.logging_config import configure_logging
+from app.services.texts import ensure_default_text_templates
+from app.workers.scheduler import background_workers
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +22,16 @@ async def run() -> None:
     settings.require_runtime_ready()
 
     configure_logging(settings.log_level)
+    logger.info("Bootstrapping application runtime.")
 
     engine = create_async_engine(settings.database_url)
     session_factory = create_session_factory(engine)
+    async with session_factory() as session:
+        created_templates = await ensure_default_text_templates(session)
+        if created_templates:
+            await session.commit()
+            logger.info("Seeded %s default text templates.", created_templates)
+
     bot = Bot(
         token=settings.bot_token.get_secret_value(),
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
@@ -33,10 +42,22 @@ async def run() -> None:
     try:
         if settings.use_webhook:
             raise NotImplementedError("Webhook mode will be added in a later stage.")
-        await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())
+        async with background_workers(
+            bot=bot,
+            session_factory=session_factory,
+            settings=settings,
+            broadcast_rate_limit_per_second=settings.broadcast_rate_limit_per_second,
+        ):
+            await dispatcher.start_polling(
+                bot,
+                allowed_updates=dispatcher.resolve_used_update_types(),
+                close_bot_session=False,
+            )
     finally:
+        logger.info("Shutting down bot runtime.")
         await bot.session.close()
         await engine.dispose()
+        logger.info("Shutdown complete.")
 
 
 def main() -> None:

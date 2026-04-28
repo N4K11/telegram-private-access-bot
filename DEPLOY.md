@@ -1,22 +1,56 @@
-﻿# Deploy
+# Deploy
 
 ## Docker Compose
 
 1. Copy `.env.example` to `.env`.
-2. Set `DATABASE_URL` to the PostgreSQL service from `docker-compose.yml` or to an external database.
-3. Fill `BOT_TOKEN` and `ADMIN_IDS`.
-4. Start services:
+2. Fill `BOT_TOKEN`, `ADMIN_IDS` and `DATABASE_URL`.
+3. Adjust optional sections for Crypto Pay, backups and rate limits.
+4. Validate the compose file:
+
+```bash
+docker compose config
+```
+
+5. Build and start the stack:
 
 ```bash
 docker compose up -d --build
 ```
 
-5. Apply migrations if needed:
+6. Apply migrations:
 
 ```bash
 docker compose exec bot alembic upgrade head
 ```
 
-## Ubuntu target
+7. Check runtime health:
 
-A dedicated Ubuntu deployment flow will be documented after the GitHub publication stop-point and server credentials stop-point described in the project brief.
+```bash
+docker compose exec bot python -m app.healthcheck
+```
+
+## systemd
+
+An example unit file is available at `deploy/systemd/telegram-private-access-bot.service`.
+
+Typical layout on Ubuntu:
+
+- project: `/opt/telegram-private-access-bot`
+- environment file: `/opt/telegram-private-access-bot/.env`
+- service user: `telegrambot`
+
+Basic commands:
+
+```bash
+sudo cp deploy/systemd/telegram-private-access-bot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable telegram-private-access-bot
+sudo systemctl start telegram-private-access-bot
+sudo systemctl status telegram-private-access-bot
+```
+
+## Notes
+
+- SQLite is intended only for local tests and development bootstrap.
+- PostgreSQL is the production target.
+- Backups intentionally exclude `.env` and runtime secrets.

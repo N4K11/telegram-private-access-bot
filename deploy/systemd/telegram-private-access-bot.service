@@ -1,0 +1,21 @@
+[Unit]
+Description=Telegram Private Access Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=telegrambot
+Group=telegrambot
+WorkingDirectory=/opt/telegram-private-access-bot
+EnvironmentFile=/opt/telegram-private-access-bot/.env
+ExecStart=/usr/bin/python3 -m app.main
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

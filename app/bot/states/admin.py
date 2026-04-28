@@ -21,3 +21,11 @@ class AdminTariffForm(StatesGroup):
     waiting_for_new_days = State()
     waiting_for_new_sort = State()
     waiting_for_new_channel = State()
+
+
+class AdminUserForm(StatesGroup):
+    waiting_for_direct_message = State()
+
+
+class AdminBroadcastForm(StatesGroup):
+    waiting_for_content = State()
