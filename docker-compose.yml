@@ -1,0 +1,30 @@
+﻿services:
+  bot:
+    build: .
+    command: python -m app.main
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./backups:/app/backups
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bot_db
+      POSTGRES_USER: bot
+      POSTGRES_PASSWORD: bot_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot -d bot_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

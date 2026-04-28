@@ -1,0 +1,1 @@
+﻿"""Optional Crypto Pay integration."""
