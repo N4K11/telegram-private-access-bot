@@ -35,6 +35,15 @@ class PaymentRepository:
     async def list_recent_paid_for_user(self, user_id: int, *, limit: int = 5) -> list[Payment]:
         return await self.list_paid_for_user(user_id, limit=limit)
 
+    async def count_paid_for_user(self, user_id: int) -> int:
+        result = await self._session.execute(
+            select(func.count(Payment.id))
+            .where(Payment.user_id == user_id)
+            .where(Payment.status == "paid")
+        )
+        value = result.scalar_one()
+        return int(value or 0)
+
     async def sum_paid_for_user(self, user_id: int) -> int:
         result = await self._session.execute(
             select(func.coalesce(func.sum(Payment.amount), 0))

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from html import escape
 
 from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery
@@ -12,16 +13,15 @@ from app.db.repositories.users import UserRepository
 from app.services.invites import InviteLinkError, InviteLinkGrant, issue_subscription_invite_link
 from app.services.texts import render_text
 from app.utils.datetime import format_datetime
+from app.utils.encoding import safe_ui_text
 
 logger = logging.getLogger(__name__)
 
 router = Router(name="user_invites")
 
 FRIENDLY_INVITE_ERROR = (
-    "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c "
-    "\u0441\u0441\u044b\u043b\u043a\u0443 \u0434\u043e\u0441\u0442\u0443\u043f\u0430. "
-    "\u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u043f\u043e\u0437\u0436\u0435 "
-    "\u0438\u043b\u0438 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 /paysupport."
+    "Не удалось создать ссылку доступа. "
+    "Попробуйте позже или используйте /paysupport."
 )
 
 
@@ -40,23 +40,23 @@ async def _render_invite_text(
     *,
     timezone: str,
 ) -> str:
-    action = (
-        "Active invite link reused."
-        if grant.is_reused
-        else "Access link is ready."
-    )
+    action = "🔁 Действующая ссылка обновлена." if grant.is_reused else "✅ Ссылка доступа готова."
     invite_expires_block = ""
     if grant.invite.expire_at is not None:
         invite_expires_block = (
             "\n"
-            f"Valid until: {format_datetime(grant.invite.expire_at, timezone)}"
+            f"Ссылка действует до: {format_datetime(grant.invite.expire_at, timezone)}"
         )
 
+    channel_name = safe_ui_text(
+        grant.subscription.channel.title,
+        f"Канал #{grant.subscription.channel_id}",
+    )
     return await render_text(
         session,
         "invite_link",
         action=action,
-        channel_name=grant.subscription.channel.title,
+        channel_name=escape(channel_name),
         invite_link=grant.invite.invite_link,
         invite_expires_block=invite_expires_block,
     )
@@ -80,10 +80,10 @@ async def issue_invite_link_handler(
 
     user = await UserRepository(session).get_by_telegram_id(callback.from_user.id)
     if user is None:
-        await callback.answer("Start the bot first.", show_alert=True)
+        await callback.answer("Сначала открой /start.", show_alert=True)
         return
     if user.is_blocked:
-        await callback.answer("Access is restricted.", show_alert=True)
+        await callback.answer("Доступ ограничен администратором.", show_alert=True)
         return
 
     try:
@@ -111,4 +111,4 @@ async def issue_invite_link_handler(
     await callback.message.answer(
         await _render_invite_text(session, grant, timezone=settings.timezone)
     )
-    await callback.answer("Link sent.")
+    await callback.answer("Ссылка отправлена.")

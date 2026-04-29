@@ -7,22 +7,30 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.keyboards.navigation import build_navigation_keyboard
 from app.db.models import Channel, Tariff
+from app.utils.encoding import safe_ui_text
+
+ADMIN_HOME_TEXT = "🏠 Админ-панель"
+ADMIN_USER_MENU_TEXT = "⬅️ Назад в меню пользователя"
 
 
 def admin_main_menu_keyboard() -> InlineKeyboardMarkup:
-    return build_navigation_keyboard(
+    builder = InlineKeyboardBuilder()
+    for text, callback_data in (
         ("📊 Аналитика", "menu:admin:analytics"),
         ("👥 Пользователи", "menu:admin:users"),
         ("💳 Платежи", "menu:admin:payments"),
         ("🧾 Тарифы", "menu:admin:tariffs"),
         ("📣 Каналы", "menu:admin:channels"),
         ("✍️ Тексты", "menu:admin:texts"),
-        ("📢 Рассылка", "menu:admin:broadcasts"),
+        ("📢 Рассылки", "menu:admin:broadcasts"),
         ("💾 Бэкапы", "menu:admin:backups"),
         ("⚙️ Настройки", "menu:admin:settings"),
         ("🧪 Диагностика", "menu:admin:diagnostics"),
-        include_home=False,
-    )
+    ):
+        builder.button(text=text, callback_data=callback_data)
+    builder.button(text=ADMIN_USER_MENU_TEXT, callback_data="menu:user:home")
+    builder.adjust(1)
+    return builder.as_markup()
 
 
 def admin_section_keyboard() -> InlineKeyboardMarkup:
@@ -31,6 +39,8 @@ def admin_section_keyboard() -> InlineKeyboardMarkup:
         include_home=True,
         back_callback="menu:admin:home",
         home_callback="menu:admin:home",
+        back_text="⬅️ Назад",
+        home_text=ADMIN_HOME_TEXT,
     )
 
 
@@ -40,6 +50,8 @@ def admin_form_keyboard(*, back_callback: str) -> InlineKeyboardMarkup:
         include_home=True,
         back_callback=back_callback,
         home_callback="menu:admin:home",
+        back_text="⬅️ Назад",
+        home_text=ADMIN_HOME_TEXT,
     )
 
 
@@ -47,12 +59,13 @@ def admin_channels_keyboard(channels: Sequence[Channel]) -> InlineKeyboardMarkup
     builder = InlineKeyboardBuilder()
     for channel in channels:
         status = "✅" if channel.is_active else "⏸"
+        title = safe_ui_text(channel.title, f"Канал #{channel.id}")
         builder.button(
-            text=f"{status} {channel.title}",
+            text=f"{status} {title}",
             callback_data=f"menu:admin:channels:view:{channel.id}",
         )
     builder.button(text="➕ Добавить канал", callback_data="menu:admin:channels:create")
-    builder.button(text="Главное меню", callback_data="menu:admin:home")
+    builder.button(text=ADMIN_HOME_TEXT, callback_data="menu:admin:home")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -71,8 +84,8 @@ def admin_channel_detail_keyboard(channel_id: int, *, is_active: bool) -> Inline
         text="🔄 Обновить проверку",
         callback_data=f"menu:admin:channels:refresh:{channel_id}",
     )
-    builder.button(text="Назад", callback_data="menu:admin:channels")
-    builder.button(text="Главное меню", callback_data="menu:admin:home")
+    builder.button(text="⬅️ Назад", callback_data="menu:admin:channels")
+    builder.button(text=ADMIN_HOME_TEXT, callback_data="menu:admin:home")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -86,12 +99,13 @@ def admin_tariffs_keyboard(tariffs: Sequence[Tariff]) -> InlineKeyboardMarkup:
             status = "✅"
         else:
             status = "⏸"
+        title = safe_ui_text(tariff.name, f"Тариф #{tariff.id}")
         builder.button(
-            text=f"{status} {tariff.name}",
+            text=f"{status} {title}",
             callback_data=f"menu:admin:tariffs:view:{tariff.id}",
         )
     builder.button(text="➕ Создать тариф", callback_data="menu:admin:tariffs:create")
-    builder.button(text="Главное меню", callback_data="menu:admin:home")
+    builder.button(text=ADMIN_HOME_TEXT, callback_data="menu:admin:home")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -132,8 +146,8 @@ def admin_tariff_detail_keyboard(
             text="🗄 Архивировать",
             callback_data=f"menu:admin:tariffs:archive:{tariff_id}",
         )
-    builder.button(text="Назад", callback_data="menu:admin:tariffs")
-    builder.button(text="Главное меню", callback_data="menu:admin:home")
+    builder.button(text="⬅️ Назад", callback_data="menu:admin:tariffs")
+    builder.button(text=ADMIN_HOME_TEXT, callback_data="menu:admin:home")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -145,11 +159,12 @@ def admin_channel_picker_keyboard(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for channel in channels:
+        title = safe_ui_text(channel.title, f"Канал #{channel.id}")
         builder.button(
-            text=f"📣 {channel.title}",
+            text=f"📣 {title}",
             callback_data=f"menu:admin:tariffs:pick-channel:{channel.id}",
         )
-    builder.button(text="Назад", callback_data=back_callback)
-    builder.button(text="Главное меню", callback_data="menu:admin:home")
+    builder.button(text="⬅️ Назад", callback_data=back_callback)
+    builder.button(text=ADMIN_HOME_TEXT, callback_data="menu:admin:home")
     builder.adjust(1)
     return builder.as_markup()

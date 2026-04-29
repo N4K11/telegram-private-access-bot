@@ -25,6 +25,7 @@ from app.db.repositories.tariffs import TariffRepository
 from app.services.audit import write_audit_log
 from app.services.subscriptions import activate_or_extend_subscription
 from app.utils.datetime import ensure_aware_utc, utcnow
+from app.utils.encoding import safe_ui_text
 
 logger = logging.getLogger(__name__)
 
@@ -98,9 +99,9 @@ class CryptoPayHTTPClient:
     @classmethod
     def from_settings(cls, settings: Settings) -> CryptoPayHTTPClient:
         if not settings.crypto_pay_enabled:
-            raise CryptoPayDisabledError("Crypto Pay is disabled.")
+            raise CryptoPayDisabledError("\u041e\u043f\u043b\u0430\u0442\u0430 \u0447\u0435\u0440\u0435\u0437 Crypto Pay \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430.")
         if settings.crypto_pay_token is None or not settings.crypto_pay_token.get_secret_value().strip():
-            raise CryptoPayError("Crypto Pay token is missing.")
+            raise CryptoPayError("\u041d\u0435 \u0437\u0430\u0434\u0430\u043d \u0442\u043e\u043a\u0435\u043d Crypto Pay.")
         return cls(
             token=settings.crypto_pay_token.get_secret_value(),
             testnet=settings.crypto_pay_testnet,
@@ -175,9 +176,9 @@ async def create_crypto_invoice(
     now: datetime | None = None,
 ) -> CryptoInvoiceCreationResult:
     if not settings.crypto_pay_enabled:
-        raise CryptoPayDisabledError("Crypto Pay is disabled.")
+        raise CryptoPayDisabledError("\u041e\u043f\u043b\u0430\u0442\u0430 \u0447\u0435\u0440\u0435\u0437 Crypto Pay \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430.")
     if tariff.price_crypto is None or tariff.price_crypto <= 0:
-        raise CryptoPayError("Crypto price is not configured for this tariff.")
+        raise CryptoPayError("\u0414\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0442\u0430\u0440\u0438\u0444\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430 \u0446\u0435\u043d\u0430 \u0432 Crypto Pay.")
 
     current_time = ensure_aware_utc(now or utcnow())
     repository = CryptoInvoiceRepository(session)
@@ -434,10 +435,13 @@ async def process_crypto_pay_webhook_update(
 
 
 def _build_crypto_invoice_description(tariff: Tariff) -> str:
-    channel_title = tariff.channel.title if tariff.channel is not None else "private channel"
+    channel_title = safe_ui_text(
+        tariff.channel.title if tariff.channel is not None else None,
+        "\u043f\u0440\u0438\u0432\u0430\u0442\u043d\u044b\u0439 \u043a\u0430\u043d\u0430\u043b",
+    )
     return (
-        f"Access for {tariff.duration_days} days to {channel_title}. "
-        "The subscription will be activated automatically after Crypto Pay confirms the payment."
+        f"\u0414\u043e\u0441\u0442\u0443\u043f \u043d\u0430 {tariff.duration_days} \u0434\u043d\u0435\u0439 \u0432 {channel_title}. "
+        "\u041f\u043e\u0441\u043b\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u044f \u043e\u043f\u043b\u0430\u0442\u044b \u0432 Crypto Pay \u043f\u043e\u0434\u043f\u0438\u0441\u043a\u0430 \u0430\u043a\u0442\u0438\u0432\u0438\u0440\u0443\u0435\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438."
     )[:1024]
 
 

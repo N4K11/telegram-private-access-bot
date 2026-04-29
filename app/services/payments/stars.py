@@ -12,6 +12,7 @@ from app.db.repositories.payments import PaymentRepository
 from app.db.repositories.subscriptions import SubscriptionRepository
 from app.services.subscriptions import activate_or_extend_subscription
 from app.utils.datetime import ensure_aware_utc, utcnow
+from app.utils.encoding import safe_ui_text
 
 STARS_CURRENCY = "XTR"
 STARS_PROVIDER = "telegram_stars"
@@ -35,8 +36,10 @@ class StarsPaymentProcessingResult:
     is_extension: bool
 
 
+
 def build_stars_invoice_payload(tariff_id: int) -> str:
     return f"{_STARS_PAYLOAD_PREFIX}{tariff_id}"
+
 
 
 def parse_stars_invoice_payload(payload: str) -> StarsInvoicePayload:
@@ -50,17 +53,23 @@ def parse_stars_invoice_payload(payload: str) -> StarsInvoicePayload:
     return StarsInvoicePayload(tariff_id=int(raw_tariff_id))
 
 
+
 def build_stars_prices(tariff: Tariff) -> list[LabeledPrice]:
-    return [LabeledPrice(label=tariff.name, amount=tariff.price_stars)]
+    label = safe_ui_text(tariff.name, f"Тариф #{tariff.id}")[:32]
+    return [LabeledPrice(label=label, amount=tariff.price_stars)]
+
 
 
 def build_stars_invoice_title(tariff: Tariff) -> str:
-    title = tariff.name.strip()
-    return title[:32] if title else "Подписка"
+    return safe_ui_text(tariff.name, f"Тариф #{tariff.id}")[:32]
+
 
 
 def build_stars_invoice_description(tariff: Tariff) -> str:
-    channel_title = tariff.channel.title if tariff.channel is not None else "приватный канал"
+    channel_title = safe_ui_text(
+        tariff.channel.title if tariff.channel is not None else None,
+        "приватный канал",
+    )
     return (
         f"Доступ на {tariff.duration_days} дн. в {channel_title}. "
         "После оплаты подписка активируется автоматически."

@@ -38,6 +38,7 @@ from app.services.payments.stars import (
 from app.services.tariffs import TariffValidationError, ensure_channel_can_host_tariff
 from app.services.texts import render_text
 from app.utils.datetime import format_datetime
+from app.utils.encoding import safe_ui_text
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,17 @@ async def _text(
     return rendered
 
 
+def _safe_tariff_name(tariff: Tariff) -> str:
+    return safe_ui_text(tariff.name, f"\u0422\u0430\u0440\u0438\u0444 #{tariff.id}")
+
+
+def _safe_channel_name(tariff: Tariff) -> str:
+    return safe_ui_text(
+        tariff.channel.title if tariff.channel is not None else None,
+        f"\u041a\u0430\u043d\u0430\u043b #{tariff.channel_id}",
+    )
+
+
 async def _render_tariffs_overview(
     session: AsyncSession | None,
     tariffs: list[Tariff],
@@ -71,36 +83,41 @@ async def _render_tariffs_overview(
     crypto_enabled: bool,
 ) -> str:
     if not tariffs:
-        tariffs_block = "No active tariffs right now."
-    else:
-        lines = ["Available options:", ""]
-        for tariff in tariffs:
-            channel_title = escape(tariff.channel.title)
-            details = f"- {escape(tariff.name)}: {tariff.price_stars} Stars / {tariff.duration_days} days"
-            if crypto_enabled and tariff.price_crypto is not None:
-                details += f" / {tariff.price_crypto} Crypto"
-            lines.append(details)
-            lines.append(f"  Channel: {channel_title}")
-        tariffs_block = "\n".join(lines)
+        return await _text(session, "tariffs_empty")
 
-    return await _text(session, "tariffs", tariffs_block=tariffs_block)
+    lines: list[str] = []
+    for index, tariff in enumerate(tariffs, start=1):
+        lines.append(f"{index}. \U0001f48e {escape(_safe_tariff_name(tariff))}")
+        lines.append(f"   \u23f3 \u0421\u0440\u043e\u043a: {tariff.duration_days} \u0434\u043d\u0435\u0439")
+        lines.append(f"   \u2b50 \u0426\u0435\u043d\u0430: {tariff.price_stars} Stars")
+        lines.append(f"   \U0001f4e3 \u041a\u0430\u043d\u0430\u043b: {escape(_safe_channel_name(tariff))}")
+        if crypto_enabled and tariff.price_crypto is not None:
+            lines.append(f"   \u20bf Crypto Pay: {tariff.price_crypto}")
+        if index != len(tariffs):
+            lines.append("")
+
+    return await _text(session, "tariffs", tariffs_block="\n".join(lines))
 
 
-def _render_tariff_detail(
+async def _render_tariff_detail(
+    session: AsyncSession | None,
     tariff: Tariff,
     *,
     crypto_enabled: bool,
 ) -> str:
-    lines = [
-        f"Tariff: {escape(tariff.name)}",
-        "",
-        f"Price: {tariff.price_stars} Stars",
-        f"Duration: {tariff.duration_days} days",
-        f"Channel: {escape(tariff.channel.title)}",
-    ]
+    crypto_block = ""
     if crypto_enabled and tariff.price_crypto is not None:
-        lines.append(f"Crypto: {tariff.price_crypto}")
-    return "\n".join(lines)
+        crypto_block = f"\n\u20bf Crypto Pay: {tariff.price_crypto}"
+
+    return await _text(
+        session,
+        "tariff_detail",
+        tariff_name=_safe_tariff_name(tariff),
+        duration_days=tariff.duration_days,
+        price_stars=tariff.price_stars,
+        channel_name=_safe_channel_name(tariff),
+        crypto_block=crypto_block,
+    )
 
 
 async def _render_payment_success_text(
@@ -114,14 +131,14 @@ async def _render_payment_success_text(
     invite_expires_at: datetime | None = None,
     invite_error: str | None = None,
 ) -> str:
-    action = "Subscription extended." if is_extension else "Subscription activated."
+    action = "\u041f\u043e\u0434\u043f\u0438\u0441\u043a\u0430 \u043f\u0440\u043e\u0434\u043b\u0435\u043d\u0430." if is_extension else "\u041f\u043e\u0434\u043f\u0438\u0441\u043a\u0430 \u0430\u043a\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u0430\u043d\u0430."
     invite_block = ""
 
     if invite_link is not None:
-        invite_lines = ["", "", f"Invite link: {invite_link}"]
+        invite_lines = ["", "", f"\u0421\u0441\u044b\u043b\u043a\u0430 \u0434\u043e\u0441\u0442\u0443\u043f\u0430: {invite_link}"]
         if invite_expires_at is not None:
             invite_lines.append(
-                f"Invite valid until: {format_datetime(invite_expires_at, timezone)}"
+                f"\u0421\u0441\u044b\u043b\u043a\u0430 \u0430\u043a\u0442\u0438\u0432\u043d\u0430 \u0434\u043e: {format_datetime(invite_expires_at, timezone)}"
             )
         invite_block = "\n".join(invite_lines)
     elif invite_error is not None:
@@ -131,8 +148,8 @@ async def _render_payment_success_text(
         session,
         "payment_success",
         action=action,
-        tariff_name=tariff.name,
-        channel_name=tariff.channel.title,
+        tariff_name=_safe_tariff_name(tariff),
+        channel_name=_safe_channel_name(tariff),
         expires_at=format_datetime(expires_at, timezone),
         invite_block=invite_block,
     )
@@ -159,25 +176,31 @@ def _render_crypto_invoice_text(
     timezone: str,
     is_reused: bool,
 ) -> str:
+    tariff_name = safe_ui_text(tariff.name, f"\u0422\u0430\u0440\u0438\u0444 #{tariff.id}")
+    channel_name = safe_ui_text(
+        tariff.channel.title if tariff.channel is not None else None,
+        f"\u041a\u0430\u043d\u0430\u043b #{tariff.channel_id}",
+    )
+
     lines = []
     if is_reused:
-        lines.append("Active crypto invoice reused.")
+        lines.append("\u267b\ufe0f \u0418\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u043c \u0443\u0436\u0435 \u0441\u043e\u0437\u0434\u0430\u043d\u043d\u044b\u0439 \u0441\u0447\u0451\u0442 Crypto Pay.")
     else:
-        lines.append("Crypto invoice created.")
+        lines.append("\U0001f4b8 \u0421\u0447\u0451\u0442 Crypto Pay \u0441\u043e\u0437\u0434\u0430\u043d.")
     lines.extend(
         [
             "",
-            f"Tariff: {escape(tariff.name)}",
-            f"Asset: {asset}",
-            f"Amount: {amount}",
-            f"Channel: {escape(tariff.channel.title)}",
+            f"\u0422\u0430\u0440\u0438\u0444: {escape(tariff_name)}",
+            f"\u0410\u043a\u0442\u0438\u0432: {asset}",
+            f"\u0421\u0443\u043c\u043c\u0430: {amount}",
+            f"\u041a\u0430\u043d\u0430\u043b: {escape(channel_name)}",
         ]
     )
     if expires_at is not None:
-        lines.append(f"Valid until: {format_datetime(expires_at, timezone)}")
+        lines.append(f"\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043b\u0435\u043d \u0434\u043e: {format_datetime(expires_at, timezone)}")
     if invoice_url:
-        lines.extend(["", "Open the payment page and complete the payment there."])
-    lines.extend(["", "Subscription will be activated automatically after payment confirmation."])
+        lines.extend(["", "\u041e\u0442\u043a\u0440\u043e\u0439 \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0443 \u043e\u043f\u043b\u0430\u0442\u044b \u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0438 \u043f\u043b\u0430\u0442\u0451\u0436 \u0432 Crypto Pay."])
+    lines.extend(["", "\u041f\u043e\u0441\u043b\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u044f \u043e\u043f\u043b\u0430\u0442\u044b \u043f\u043e\u0434\u043f\u0438\u0441\u043a\u0430 \u0430\u043a\u0442\u0438\u0432\u0438\u0440\u0443\u0435\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438."])
     return "\n".join(lines)
 
 
@@ -189,6 +212,7 @@ async def paysupport_command(
     await message.answer(await _text(session, "paysupport"))
 
 
+@router.callback_query(F.data == "menu:user:buy")
 @router.callback_query(F.data == "menu:user:tariffs")
 async def tariffs_index(callback: CallbackQuery, session: AsyncSession, settings: Settings) -> None:
     tariffs = await TariffRepository(session).list_active()
@@ -212,12 +236,13 @@ async def tariff_detail(callback: CallbackQuery, session: AsyncSession, settings
 
     tariff = await _load_active_tariff(session, tariff_id)
     if tariff is None:
-        await callback.answer("Tariff unavailable.", show_alert=True)
+        await callback.answer("\u0422\u0430\u0440\u0438\u0444 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d.", show_alert=True)
         return
 
     await edit_or_answer(
         callback,
-        text=_render_tariff_detail(
+        text=await _render_tariff_detail(
+            session,
             tariff,
             crypto_enabled=settings.crypto_pay_enabled,
         ),
@@ -247,12 +272,12 @@ async def buy_crypto_tariff(
             admin_ids=settings.admin_ids_set,
         )
     if user.is_blocked:
-        await callback.answer("Purchase unavailable.", show_alert=True)
+        await callback.answer("\u041f\u043e\u043a\u0443\u043f\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430: \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d.", show_alert=True)
         return
 
     tariff = await _load_active_tariff(session, tariff_id)
     if tariff is None:
-        await callback.answer("Tariff unavailable.", show_alert=True)
+        await callback.answer("\u0422\u0430\u0440\u0438\u0444 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d.", show_alert=True)
         return
 
     try:
@@ -281,7 +306,7 @@ async def buy_crypto_tariff(
     except Exception:
         await session.rollback()
         logger.exception("Failed to create Crypto Pay invoice for tariff %s", tariff_id)
-        await callback.answer("Crypto invoice creation failed.", show_alert=True)
+        await callback.answer("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c \u0441\u0447\u0451\u0442 Crypto Pay.", show_alert=True)
         return
 
     await callback.message.answer(
@@ -313,19 +338,19 @@ async def buy_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
 
     user = await UserRepository(session).get_by_telegram_id(callback.from_user.id)
     if user is not None and user.is_blocked:
-        await callback.answer("Purchase unavailable.", show_alert=True)
+        await callback.answer("\u041f\u043e\u043a\u0443\u043f\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430: \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d.", show_alert=True)
         return
 
     tariff = await _load_active_tariff(session, tariff_id)
     if tariff is None:
-        await callback.answer("Tariff unavailable.", show_alert=True)
+        await callback.answer("\u0422\u0430\u0440\u0438\u0444 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d.", show_alert=True)
         return
 
     try:
         await send_stars_invoice(callback.message, tariff)
     except Exception:
         logger.exception("Failed to send Stars invoice for tariff %s", tariff_id)
-        await callback.answer("Invoice send failed.", show_alert=True)
+        await callback.answer("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0441\u0447\u0451\u0442 \u043d\u0430 \u043e\u043f\u043b\u0430\u0442\u0443.", show_alert=True)
         return
 
     if user is not None:
@@ -344,25 +369,25 @@ async def buy_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
                 user.id,
             )
 
-    await callback.answer("Invoice sent.")
+    await callback.answer("\u0421\u0447\u0451\u0442 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d.")
 
 
 @router.pre_checkout_query()
 async def pre_checkout_handler(query: PreCheckoutQuery, session: AsyncSession) -> None:
     user = await UserRepository(session).get_by_telegram_id(query.from_user.id)
     if user is not None and user.is_blocked:
-        await query.answer(ok=False, error_message="Purchase unavailable.")
+        await query.answer(ok=False, error_message="\u041f\u043e\u043a\u0443\u043f\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430: \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d.")
         return
 
     try:
         payload = parse_stars_invoice_payload(query.invoice_payload)
         tariff = await _load_active_tariff(session, payload.tariff_id)
         if tariff is None:
-            raise StarsInvoiceError("Tariff unavailable.")
+            raise StarsInvoiceError("\u0422\u0430\u0440\u0438\u0444 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d.")
         if query.currency != STARS_CURRENCY:
-            raise StarsInvoiceError("Only Telegram Stars are supported.")
+            raise StarsInvoiceError("\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u044e\u0442\u0441\u044f \u0442\u043e\u043b\u044c\u043a\u043e Telegram Stars.")
         if query.total_amount != tariff.price_stars:
-            raise StarsInvoiceError("Price changed. Reopen the tariff.")
+            raise StarsInvoiceError("\u0426\u0435\u043d\u0430 \u0438\u0437\u043c\u0435\u043d\u0438\u043b\u0430\u0441\u044c. \u041e\u0442\u043a\u0440\u043e\u0439 \u0442\u0430\u0440\u0438\u0444 \u0437\u0430\u043d\u043e\u0432\u043e.")
     except StarsInvoiceError as exc:
         await query.answer(ok=False, error_message=str(exc))
         return
@@ -392,7 +417,7 @@ async def successful_payment_handler(
         payload = parse_stars_invoice_payload(message.successful_payment.invoice_payload)
         tariff = await TariffRepository(session).get_by_id(payload.tariff_id)
         if tariff is None:
-            raise StarsInvoiceError("Tariff not found.")
+            raise StarsInvoiceError("\u0422\u0430\u0440\u0438\u0444 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d.")
 
         result = await process_successful_stars_payment(
             session,
@@ -430,14 +455,14 @@ async def successful_payment_handler(
             await _text(
                 session,
                 "payment_failed",
-                reason="internal processing error",
+                reason="\u0432\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u044f\u044f \u043e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0438",
             )
         )
         await message.answer(await _text(session, "paysupport"))
         return
 
     if result.is_duplicate:
-        await message.answer("Payment already processed.")
+        await message.answer("\u041f\u043b\u0430\u0442\u0451\u0436 \u0443\u0436\u0435 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u043d.")
         return
 
     if result.subscription is None:
@@ -445,7 +470,7 @@ async def successful_payment_handler(
             await _text(
                 session,
                 "payment_failed",
-                reason="subscription was not updated automatically",
+                reason="\u043f\u043e\u0434\u043f\u0438\u0441\u043a\u0430 \u043d\u0435 \u0431\u044b\u043b\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430 \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438",
             )
         )
         await message.answer(await _text(session, "paysupport"))
@@ -474,7 +499,7 @@ async def successful_payment_handler(
             "Unexpected invite issuance failure after payment for subscription %s",
             result.subscription.id,
         )
-        invite_error = "Invite generation failed."
+        invite_error = "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u0444\u043e\u0440\u043c\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0441\u0441\u044b\u043b\u043a\u0443 \u0434\u043e\u0441\u0442\u0443\u043f\u0430."
 
     await message.answer(
         await _render_payment_success_text(

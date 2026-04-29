@@ -314,11 +314,11 @@ def test_user_tariff_detail_keyboard_hides_crypto_by_default() -> None:
     crypto_markup = user_tariff_detail_keyboard(10, include_crypto=True)
 
     assert _button_texts(default_markup) == [
-        "в­ђ РћРїР»Р°С‚РёС‚СЊ Stars",
-        "РќР°Р·Р°Рґ",
-        "Р“Р»Р°РІРЅРѕРµ РјРµРЅСЋ",
+        "\u2b50 \u041e\u043f\u043b\u0430\u0442\u0438\u0442\u044c Stars",
+        "\u2b05\ufe0f \u041d\u0430\u0437\u0430\u0434",
+        "\U0001f3e0 \u0413\u043b\u0430\u0432\u043d\u043e\u0435 \u043c\u0435\u043d\u044e",
     ]
     assert _button_texts(crypto_markup)[0:2] == [
-        "в­ђ РћРїР»Р°С‚РёС‚СЊ Stars",
-        "в‚ї Crypto Pay",
+        "\u2b50 \u041e\u043f\u043b\u0430\u0442\u0438\u0442\u044c Stars",
+        "\u20bf \u041e\u043f\u043b\u0430\u0442\u0438\u0442\u044c Crypto Pay",
     ]

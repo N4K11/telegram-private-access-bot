@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -15,6 +16,7 @@ from app.services.texts import (
     DEFAULT_TEXT_TEMPLATES,
     ensure_default_text_templates,
     get_text_template_record,
+    has_mojibake,
     render_text,
 )
 
@@ -74,6 +76,10 @@ class FakeState:
         return dict(self.data)
 
 
+def _to_mojibake(value: str) -> str:
+    return value.encode("utf-8").decode("cp1251")
+
+
 @pytest.fixture
 async def session() -> AsyncIterator[AsyncSession]:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -107,13 +113,11 @@ async def test_stage9_default_templates_seed_and_render_clean(
 
     assert created == len(DEFAULT_TEXT_TEMPLATES)
     assert {"start", "profile", "tariffs", "payment_success", "support"}.issubset(keys)
-    assert all("Рџ" not in template.body for template in templates)
-    assert all("Ð" not in template.body for template in templates)
-    assert all("Ñ" not in template.body for template in templates)
-    assert all("�" not in template.body for template in templates)
+    assert all(not has_mojibake(template.title) for template in templates)
+    assert all(not has_mojibake(template.body) for template in templates)
 
-    rendered = await render_text(session, "start", first_name="Анна")
-    assert rendered.startswith("Здравствуйте, Анна.")
+    rendered = await render_text(session, "start", first_name="\u0410\u043d\u043d\u0430")
+    assert rendered.startswith("\U0001f44b \u041f\u0440\u0438\u0432\u0435\u0442, \u0410\u043d\u043d\u0430!")
 
 
 async def test_render_text_falls_back_when_custom_template_is_invalid(
@@ -123,17 +127,17 @@ async def test_render_text_falls_back_when_custom_template_is_invalid(
     template = await get_text_template_record(session, "start")
     assert template is not None
 
-    template.body = "Привет, {first_name"
+    template.body = "\u041f\u0440\u0438\u0432\u0435\u0442, {first_name"
     await session.commit()
 
-    rendered = await render_text(session, "start", first_name="Анна")
-    assert rendered.startswith("Здравствуйте, Анна.")
+    rendered = await render_text(session, "start", first_name="\u0410\u043d\u043d\u0430")
+    assert rendered.startswith("\U0001f44b \u041f\u0440\u0438\u0432\u0435\u0442, \u0410\u043d\u043d\u0430!")
 
-    template.body = "Привет, {first_name}! {missing_placeholder}"
+    template.body = "\u041f\u0440\u0438\u0432\u0435\u0442, {first_name}! {missing_placeholder}"
     await session.commit()
 
-    rendered_with_missing = await render_text(session, "start", first_name="Анна")
-    assert rendered_with_missing == "Привет, Анна! {missing_placeholder}"
+    rendered_with_missing = await render_text(session, "start", first_name="\u0410\u043d\u043d\u0430")
+    assert rendered_with_missing == "\u041f\u0440\u0438\u0432\u0435\u0442, \u0410\u043d\u043d\u0430! {missing_placeholder}"
 
 
 async def test_admin_text_editor_updates_and_resets_template(
@@ -148,13 +152,13 @@ async def test_admin_text_editor_updates_and_resets_template(
 
     assert state.state_name == AdminTextEditor.waiting_for_value
 
-    message = DummyMessage(text="Новая поддержка для {first_name}")
+    message = DummyMessage(text="\u041d\u043e\u0432\u0430\u044f \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0434\u043b\u044f {first_name}")
     await receive_text_value(message, state, session)
 
     updated = await session.scalar(select(TextTemplate).where(TextTemplate.key == "support"))
     assert updated is not None
-    assert updated.body == "Новая поддержка для {first_name}"
-    assert "Шаблон обновлён" in message.answer_calls[0][0]
+    assert updated.body == "\u041d\u043e\u0432\u0430\u044f \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0434\u043b\u044f {first_name}"
+    assert "\u0428\u0430\u0431\u043b\u043e\u043d \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d" in message.answer_calls[0][0]
 
     reset_callback = DummyCallback("menu:admin:texts:reset:support")
     await reset_text(reset_callback, session)
@@ -174,10 +178,10 @@ async def test_admin_text_editor_rejects_mojibake_input(
     await state.set_state(AdminTextEditor.waiting_for_value)
     await state.update_data(text_template_key="support")
 
-    message = DummyMessage(text="ÐŸÐ¾Ð»Ð¾Ð¼Ð°Ð½Ð½Ñ‹Ð¹ Ñ‚ÐµÐºÑÑ‚")
+    message = DummyMessage(text=_to_mojibake("\u041f\u043e\u043b\u043e\u043c\u0430\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442"))
     await receive_text_value(message, state, session)
 
     template = await session.scalar(select(TextTemplate).where(TextTemplate.key == "support"))
     assert template is not None
     assert template.body == DEFAULT_TEXT_TEMPLATES["support"].body
-    assert "кракозябры" in message.answer_calls[0][0]
+    assert "\u043a\u0440\u0430\u043a\u043e\u0437\u044f\u0431\u0440\u044b" in message.answer_calls[0][0]
