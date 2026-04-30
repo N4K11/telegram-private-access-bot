@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     broadcast_rate_limit_per_second: int = 20
     default_invite_link_ttl_hours: int = 24
     referral_reward_days: int = 7
+    grace_period_hours: int = 6
+    warning_3d_enabled: bool = True
+    warning_1d_enabled: bool = True
     rate_limit_window_seconds: int = 5
     rate_limit_max_events: int = 6
     anti_spam_duplicate_window_seconds: int = 10
