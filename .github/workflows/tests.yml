@@ -1,0 +1,72 @@
+name: tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'codex/**'
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[dev]
+
+      - name: Compile sources
+        run: python -m compileall -q app tests alembic
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest -q -p no:cacheprovider
+
+      - name: Alembic smoke
+        run: python -m alembic upgrade head
+
+      - name: Repository sanity
+        shell: bash
+        run: |
+          test ! -f .env
+          test ! -f data/db.json
+          test -f README.md
+          test -f RUNTIME_MAP.md
+          test -f DIAGNOSTICS.md
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          token_pattern = re.compile(r"\b\d{8,10}:[A-Za-z0-9_-]{20,}\b")
+          tracked_roots = [Path('app'), Path('tests'), Path('alembic'), Path('scripts'), Path('.github')]
+          for root in tracked_roots:
+              if not root.exists():
+                  continue
+              for path in root.rglob('*'):
+                  if not path.is_file():
+                      continue
+                  if path.suffix in {'.png', '.zip', '.pyc'}:
+                      continue
+                  data = path.read_bytes()
+                  if path.suffix == '.sh' and b'\r\n' in data:
+                      raise SystemExit(f'CRLF detected in shell script: {path}')
+                  try:
+                      text = data.decode('utf-8')
+                  except UnicodeDecodeError:
+                      continue
+                  if token_pattern.search(text):
+                      raise SystemExit(f'Token-like pattern detected in: {path}')
+          PY

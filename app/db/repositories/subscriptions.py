@@ -1,6 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,6 +51,99 @@ class SubscriptionRepository:
             .where(Subscription.revoked_at.is_(None))
             .where(Subscription.expires_at <= at_time)
             .order_by(Subscription.expires_at.asc(), Subscription.id.asc())
+            .limit(limit)
+        )
+        return list(result.scalars())
+
+    async def list_due_for_warning_3d(
+        self,
+        *,
+        at_time: datetime,
+        limit: int = 100,
+    ) -> list[Subscription]:
+        upper_bound = at_time + timedelta(days=3)
+        lower_bound = at_time + timedelta(days=1)
+        result = await self._session.execute(
+            select(Subscription)
+            .options(
+                selectinload(Subscription.user),
+                selectinload(Subscription.tariff).selectinload(Tariff.channel),
+                selectinload(Subscription.channel),
+            )
+            .where(Subscription.status == "active")
+            .where(Subscription.revoked_at.is_(None))
+            .where(Subscription.warning_3d_sent_at.is_(None))
+            .where(Subscription.expires_at > lower_bound)
+            .where(Subscription.expires_at <= upper_bound)
+            .order_by(Subscription.expires_at.asc(), Subscription.id.asc())
+            .limit(limit)
+        )
+        return list(result.scalars())
+
+    async def list_due_for_warning_1d(
+        self,
+        *,
+        at_time: datetime,
+        limit: int = 100,
+    ) -> list[Subscription]:
+        upper_bound = at_time + timedelta(days=1)
+        result = await self._session.execute(
+            select(Subscription)
+            .options(
+                selectinload(Subscription.user),
+                selectinload(Subscription.tariff).selectinload(Tariff.channel),
+                selectinload(Subscription.channel),
+            )
+            .where(Subscription.status == "active")
+            .where(Subscription.revoked_at.is_(None))
+            .where(Subscription.warning_1d_sent_at.is_(None))
+            .where(Subscription.expires_at > at_time)
+            .where(Subscription.expires_at <= upper_bound)
+            .order_by(Subscription.expires_at.asc(), Subscription.id.asc())
+            .limit(limit)
+        )
+        return list(result.scalars())
+
+    async def list_due_for_expired_notice(
+        self,
+        *,
+        at_time: datetime,
+        limit: int = 100,
+    ) -> list[Subscription]:
+        result = await self._session.execute(
+            select(Subscription)
+            .options(
+                selectinload(Subscription.user),
+                selectinload(Subscription.tariff).selectinload(Tariff.channel),
+                selectinload(Subscription.channel),
+            )
+            .where(Subscription.status == "active")
+            .where(Subscription.revoked_at.is_(None))
+            .where(Subscription.expires_at <= at_time)
+            .where(Subscription.expired_notice_sent_at.is_(None))
+            .order_by(Subscription.expires_at.asc(), Subscription.id.asc())
+            .limit(limit)
+        )
+        return list(result.scalars())
+
+    async def list_due_for_grace_revoke(
+        self,
+        *,
+        at_time: datetime,
+        limit: int = 100,
+    ) -> list[Subscription]:
+        result = await self._session.execute(
+            select(Subscription)
+            .options(
+                selectinload(Subscription.user),
+                selectinload(Subscription.tariff).selectinload(Tariff.channel),
+                selectinload(Subscription.channel),
+            )
+            .where(Subscription.status == "active")
+            .where(Subscription.revoked_at.is_(None))
+            .where(Subscription.grace_revoke_after.is_not(None))
+            .where(Subscription.grace_revoke_after <= at_time)
+            .order_by(Subscription.grace_revoke_after.asc(), Subscription.id.asc())
             .limit(limit)
         )
         return list(result.scalars())
@@ -133,3 +226,4 @@ class SubscriptionRepository:
         self._session.add(subscription)
         await self._session.flush()
         return subscription
+

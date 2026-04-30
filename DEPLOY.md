@@ -1,4 +1,4 @@
-# Deploy
+﻿# Deploy
 
 ## Docker Compose
 
@@ -54,3 +54,7 @@ sudo systemctl status telegram-private-access-bot
 - SQLite is intended only for local tests and development bootstrap.
 - PostgreSQL is the production target.
 - Backups intentionally exclude `.env` and runtime secrets.
+## Deploy script
+
+For non-container systemd deployments you can use `scripts/deploy.sh`.
+It pulls the repo, installs dependencies, runs compile/lint/tests, applies Alembic, creates a pre-deploy backup and only then restarts the service.

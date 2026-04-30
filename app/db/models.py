@@ -25,6 +25,18 @@ class User(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True, nullable=False)
+    referral_code: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
+    referred_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+    referred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    referral_reward_granted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    pending_referral_reward_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -87,6 +99,22 @@ class Subscription(TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=False,
         index=True,
+    )
+    warning_3d_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    warning_1d_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    expired_notice_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    grace_revoke_after: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -221,3 +249,44 @@ class CryptoInvoice(TimestampMixin, Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class PromoCode(TimestampMixin, Base):
+    __tablename__ = "promo_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    promo_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    value: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_uses: Mapped[int] = mapped_column(Integer, nullable=False)
+    tariff_id: Mapped[int | None] = mapped_column(ForeignKey("tariffs.id"), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+    tariff: Mapped[Tariff | None] = relationship()
+    redemptions: Mapped[list[PromoRedemption]] = relationship(back_populates="promo_code")
+
+
+class PromoRedemption(TimestampMixin, Base):
+    __tablename__ = "promo_redemptions"
+    __table_args__ = (
+        UniqueConstraint("promo_code_id", "user_id", name="uq_promo_redemption_promo_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    promo_code_id: Mapped[int] = mapped_column(
+        ForeignKey("promo_codes.id"), nullable=False, index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    payment_id: Mapped[int | None] = mapped_column(ForeignKey("payments.id"), nullable=True)
+    applied_tariff_id: Mapped[int | None] = mapped_column(ForeignKey("tariffs.id"), nullable=True)
+    amount_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    promo_code: Mapped[PromoCode] = relationship(back_populates="redemptions")
+    payment: Mapped[Payment | None] = relationship()
+    tariff: Mapped[Tariff | None] = relationship()
+

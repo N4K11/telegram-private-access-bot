@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import logging
@@ -11,6 +11,7 @@ from app.bot.factory import build_dispatcher
 from app.config import RuntimeConfigurationError, get_settings
 from app.db.session import create_async_engine, create_session_factory
 from app.logging_config import configure_logging
+from app.runtime_state import mark_started, reset_runtime_state
 from app.services.texts import ensure_default_text_templates
 from app.workers.scheduler import background_workers
 
@@ -22,6 +23,8 @@ async def run() -> None:
     settings.require_runtime_ready()
 
     configure_logging(settings.log_level)
+    reset_runtime_state()
+    mark_started()
     logger.info("Bootstrapping application runtime.")
 
     engine = create_async_engine(settings.database_url)

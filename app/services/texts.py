@@ -138,7 +138,33 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
             "Напиши в /paysupport, если доступ не активировался автоматически."
         ),
     ),
-    "subscription_expired": TextTemplateSeed(
+    "subscription_warning_3d": TextTemplateSeed(
+        key="subscription_warning_3d",
+        title="Напоминание за 3 дня до окончания подписки",
+        body=(
+            "⏳ До окончания доступа к каналу «{channel_name}» осталось около 3 дней.\n\n"
+            "Подписка действует до: {expires_at}.\n"
+            "Продли доступ заранее, чтобы не потерять вход."
+        ),
+    ),
+    "subscription_warning_1d": TextTemplateSeed(
+        key="subscription_warning_1d",
+        title="Напоминание за 1 день до окончания подписки",
+        body=(
+            "⚠️ До окончания доступа к каналу «{channel_name}» остался примерно 1 день.\n\n"
+            "Подписка действует до: {expires_at}.\n"
+            "Продли доступ заранее, чтобы бот не отозвал доступ."
+        ),
+    ),
+    "subscription_expired_grace": TextTemplateSeed(
+        key="subscription_expired_grace",
+        title="Подписка истекла, действует grace period",
+        body=(
+            "⌛ Подписка на канал «{channel_name}» уже истекла.\n\n"
+            "Истекла: {expired_at}.\n"
+            "Если не продлить доступ, бот отзовёт его через {grace_period_hours} ч."
+        ),
+    ),    "subscription_expired": TextTemplateSeed(
         key="subscription_expired",
         title="Подписка истекла",
         body=(

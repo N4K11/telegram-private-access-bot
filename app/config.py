@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+﻿from collections.abc import Iterable
 from functools import lru_cache
 
 from pydantic import Field, SecretStr, field_validator
@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     broadcast_rate_limit_per_second: int = 20
     default_invite_link_ttl_hours: int = 24
+    referral_reward_days: int = 7
     rate_limit_window_seconds: int = 5
     rate_limit_max_events: int = 6
     anti_spam_duplicate_window_seconds: int = 10

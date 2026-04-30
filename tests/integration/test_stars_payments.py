@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
@@ -37,7 +37,7 @@ async def _seed_user_channel_tariff(session: AsyncSession) -> tuple[User, Channe
     user = User(telegram_id=42, first_name="Anna", is_admin=False, role="user")
     channel = Channel(
         telegram_chat_id=-1001234567890,
-        title="Основной канал",
+        title="РћСЃРЅРѕРІРЅРѕР№ РєР°РЅР°Р»",
         invite_users_permission=True,
         ban_users_permission=True,
         is_active=True,
@@ -56,6 +56,7 @@ async def _seed_user_channel_tariff(session: AsyncSession) -> tuple[User, Channe
     session.add(tariff)
     await session.commit()
     return user, channel, tariff
+
 
 
 def _successful_payment(
@@ -127,6 +128,10 @@ async def test_active_subscription_extends_from_current_expiration() -> None:
             source="purchase",
             started_at=paid_at - timedelta(days=5),
             expires_at=paid_at + timedelta(days=10),
+            warning_3d_sent_at=paid_at - timedelta(days=1),
+            warning_1d_sent_at=paid_at - timedelta(hours=12),
+            expired_notice_sent_at=paid_at - timedelta(hours=1),
+            grace_revoke_after=paid_at + timedelta(hours=5),
         )
         session.add(current)
         await session.commit()
@@ -142,6 +147,10 @@ async def test_active_subscription_extends_from_current_expiration() -> None:
         assert change.subscription.id == current.id
         assert change.starts_at == paid_at - timedelta(days=5)
         assert change.subscription.expires_at == paid_at + timedelta(days=40)
+        assert change.subscription.warning_3d_sent_at is None
+        assert change.subscription.warning_1d_sent_at is None
+        assert change.subscription.expired_notice_sent_at is None
+        assert change.subscription.grace_revoke_after is None
     finally:
         await _close_session(session)
 

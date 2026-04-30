@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import inspect
+import logging
 from datetime import UTC, datetime
 from html import escape
 
@@ -24,11 +25,17 @@ from app.db.models import Subscription, User
 from app.db.repositories.payments import PaymentRepository
 from app.db.repositories.subscriptions import SubscriptionRepository
 from app.db.repositories.users import UserRepository
+from app.services.referral_service import (
+    bind_referrer_for_user,
+    build_profile_referral_block,
+    render_referral_status_message,
+)
 from app.services.texts import render_text
 from app.utils.datetime import format_datetime
 from app.utils.encoding import safe_ui_text
 
 router = Router(name="user")
+logger = logging.getLogger(__name__)
 
 
 async def _text(
@@ -42,6 +49,19 @@ async def _text(
     if inspect.isawaitable(rendered):
         return await rendered
     return rendered
+
+
+def _extract_start_payload(message_text: str | None) -> str | None:
+    if not message_text:
+        return None
+    parts = message_text.strip().split(maxsplit=1)
+    if not parts:
+        return None
+    command = parts[0].split("@", maxsplit=1)[0]
+    if command != "/start" or len(parts) < 2:
+        return None
+    payload = parts[1].strip()
+    return payload or None
 
 
 def _is_admin(
@@ -63,6 +83,27 @@ async def _load_db_user(session: AsyncSession | None, telegram_user_id: int | No
     if session is None or telegram_user_id is None:
         return None
     return await UserRepository(session).get_by_telegram_id(telegram_user_id)
+
+
+async def _ensure_db_user(
+    session: AsyncSession | None,
+    telegram_user: TelegramUser | None,
+    settings: Settings | None,
+) -> User | None:
+    if session is None or telegram_user is None:
+        return None
+
+    repository = UserRepository(session)
+    user = await repository.get_by_telegram_id(telegram_user.id)
+    if user is not None:
+        return user
+
+    user = await repository.upsert_from_telegram_user(
+        telegram_user,
+        admin_ids=settings.admin_ids_set if settings is not None else set(),
+    )
+    await session.commit()
+    return user
 
 
 async def _load_active_subscriptions(
@@ -103,6 +144,7 @@ async def _render_start_text(
     telegram_user: TelegramUser | None,
     user: User | None,
     timezone: str,
+    referral_message: str | None = None,
 ) -> str:
     first_name = safe_ui_text(
         user.first_name if user is not None else getattr(telegram_user, "first_name", None),
@@ -114,12 +156,15 @@ async def _render_start_text(
         active_subscriptions=active_subscriptions,
         timezone=timezone,
     )
-    return await _text(
+    text = await _text(
         session,
         "start",
         first_name=first_name,
         subscription_status_block=subscription_status_block,
     )
+    if referral_message:
+        text += f"\n\n{referral_message}"
+    return text
 
 
 async def _render_profile_text(
@@ -135,10 +180,17 @@ async def _render_profile_text(
     )
     purchases_count = 0
     total_paid = 0
+    rewarded_referrals_count = 0
+    pending_reward_days = 0
+    referral_code = None
     if session is not None and user is not None:
         payment_repository = PaymentRepository(session)
+        user_repository = UserRepository(session)
         purchases_count = await payment_repository.count_paid_for_user(user.id)
         total_paid = await payment_repository.sum_paid_for_user(user.id)
+        rewarded_referrals_count = await user_repository.count_rewarded_referrals(user.id)
+        pending_reward_days = int(user.pending_referral_reward_days or 0)
+        referral_code = user.referral_code
 
     subscription_status = "активна" if active_subscriptions else "не активна"
     expires_at = (
@@ -164,7 +216,7 @@ async def _render_profile_text(
         )
     active_channels_block = "\n".join(active_channels_lines) if active_channels_lines else "—"
 
-    return await _text(
+    profile_text = await _text(
         session,
         "profile",
         telegram_id=telegram_id,
@@ -175,6 +227,15 @@ async def _render_profile_text(
         total_paid=total_paid,
         active_channels_block=active_channels_block,
     )
+    profile_text += (
+        "\n\n🎁 Рефералы\n"
+        + build_profile_referral_block(
+            referral_code=referral_code,
+            pending_reward_days=pending_reward_days,
+            rewarded_referrals_count=rewarded_referrals_count,
+        )
+    )
+    return profile_text
 
 
 async def _render_invite_picker_text(
@@ -201,14 +262,45 @@ async def _render_invite_picker_text(
     )
 
 
+async def _maybe_process_start_referral(
+    message: Message,
+    *,
+    session: AsyncSession | None,
+    user: User | None,
+) -> str | None:
+    if session is None or user is None:
+        return None
+
+    payload = _extract_start_payload(getattr(message, "text", None))
+    if payload is None or not payload.lower().startswith("ref_"):
+        return None
+
+    try:
+        result = await bind_referrer_for_user(
+            session,
+            user=user,
+            raw_code=payload,
+            at_time=message.date,
+        )
+        if result.status == "bound":
+            await session.commit()
+        return render_referral_status_message(result)
+    except Exception:
+        await session.rollback()
+        logger.exception("Failed to bind referral payload for user %s", user.id)
+        return "⚠️ Не удалось обработать реферальный код. Попробуй позже."
+
+
 @router.message(CommandStart())
 async def start_handler(
     message: Message,
     session: AsyncSession | None = None,
     settings: Settings | None = None,
 ) -> None:
-    user = await _load_db_user(session, message.from_user.id if message.from_user else None)
+    user = await _ensure_db_user(session, message.from_user, settings)
+    user = user or await _load_db_user(session, message.from_user.id if message.from_user else None)
     timezone = settings.timezone if settings is not None else "UTC"
+    referral_message = await _maybe_process_start_referral(message, session=session, user=user)
     await render_section(
         message,
         text=await _render_start_text(
@@ -216,6 +308,7 @@ async def start_handler(
             telegram_user=message.from_user,
             user=user,
             timezone=timezone,
+            referral_message=referral_message,
         ),
         reply_markup=user_main_menu_keyboard(
             is_admin=_is_admin(
@@ -317,8 +410,3 @@ async def invite_section(
         reply_markup=user_subscription_keyboard(active_subscriptions),
         banner_path=get_banner_path("join"),
     )
-
-
-@router.callback_query(F.data.startswith("menu:user:"))
-async def unknown_user_section(callback: CallbackQuery) -> None:
-    await callback.answer()

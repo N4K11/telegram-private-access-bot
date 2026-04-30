@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import logging
@@ -9,6 +9,7 @@ from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings
+from app.runtime_state import record_maintenance_run
 from app.services.payments.crypto_pay import reconcile_active_crypto_invoices
 from app.workers.backup_worker import run_scheduled_backup_cycle
 from app.workers.broadcast_sender import process_broadcast_campaigns
@@ -34,9 +35,25 @@ async def run_background_workers(
         has_active_work = False
         try:
             async with session_factory() as session:
-                processed = await process_expired_subscriptions(session, bot)
-                if processed:
-                    logger.info("Processed %s expired subscriptions.", processed)
+                expiration_result = await process_expired_subscriptions(
+                    session,
+                    bot,
+                    grace_period_hours=settings.grace_period_hours,
+                    warning_3d_enabled=settings.warning_3d_enabled,
+                    warning_1d_enabled=settings.warning_1d_enabled,
+                    timezone=settings.timezone,
+                )
+                if expiration_result.has_work:
+                    logger.info(
+                        (
+                            "Subscription expiration cycle: warn3d=%s warn1d=%s "
+                            "expired_notice=%s revoked=%s."
+                        ),
+                        expiration_result.warning_3d_count,
+                        expiration_result.warning_1d_count,
+                        expiration_result.expired_notice_count,
+                        expiration_result.revoked_count,
+                    )
                     has_active_work = True
         except asyncio.CancelledError:
             raise
@@ -90,6 +107,7 @@ async def run_background_workers(
         except Exception:
             logger.exception("Crypto reconciliation worker cycle failed")
 
+        record_maintenance_run(label="background_workers")
         wait_timeout = ACTIVE_WORKER_INTERVAL_SECONDS if has_active_work else interval_seconds
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=wait_timeout)
@@ -124,3 +142,4 @@ async def background_workers(
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+

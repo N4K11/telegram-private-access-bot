@@ -8,6 +8,9 @@ Production-oriented Telegram bot for selling access to private channels with Tel
 - Minimalist runtime banners with safe text-only fallback.
 - Channel and tariff management from the admin panel.
 - `/admin_channel_check` for live channel diagnostics and bot rights verification.
+- `/admin_health` for an admin-only runtime health dashboard.
+- Promo codes for free days and Telegram Stars discounts.
+- Referral codes with reward days credited after the referred user's first successful payment.
 - Telegram Stars payments with idempotent processing.
 - Optional Crypto Pay invoices with reconciliation worker and webhook processor.
 - Personal invite links for active subscriptions.
@@ -16,7 +19,7 @@ Production-oriented Telegram bot for selling access to private channels with Tel
 - Broadcast campaigns with queue processing.
 - Managed text templates with mojibake protection and reset to defaults.
 - Daily and manual backups with retention and Telegram document delivery.
-- Healthcheck, JSON logs, anti-spam and rate limiting middleware.
+- Healthcheck, JSON logs, anti-spam, runtime telemetry and rate limiting middleware.
 
 ## Stack
 
@@ -65,11 +68,21 @@ Optional production flags:
 - `BACKUP_*`
 - `RATE_LIMIT_*`
 - `PUBLIC_WEBHOOK_URL`
+- `REFERRAL_REWARD_DAYS`
 
 ## Admin commands
 
 - `/admin`
 - `/admin_channel_check`
+- `/admin_health`
+- `/admin_promo_create CODE TYPE VALUE LIMIT [TARIFF_ID|-] [VALID_DAYS|-]`
+- `/admin_promo_disable CODE`
+- `/admin_promo_stats CODE`
+
+## User commands
+
+- `/promo CODE`
+- `/paysupport`
 
 ## Project layout
 
@@ -80,8 +93,10 @@ Optional production flags:
 - `app/workers/` background workers.
 - `assets/` runtime PNG banners and avatar.
 - `design/` editable SVG concepts and previews.
-- `tests/` unit and integration tests.
-- `deploy/` deployment artifacts including the systemd example.
+- 	ests/ unit and integration tests.
+- .github/workflows/ CI workflow definitions.
+- deploy/ deployment artifacts including the systemd example.
+- scripts/ operational shell helpers for backup, verify and restore.
 
 See also:
 
@@ -93,3 +108,4 @@ See also:
 - `RUNTIME_MAP.md`
 - `DIAGNOSTICS.md`
 - `VISUAL_ASSETS.md`
+

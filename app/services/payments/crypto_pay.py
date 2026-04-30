@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+﻿# ruff: noqa: E501
 from __future__ import annotations
 
 import asyncio
@@ -23,6 +23,11 @@ from app.db.repositories.payments import PaymentRepository
 from app.db.repositories.subscriptions import SubscriptionRepository
 from app.db.repositories.tariffs import TariffRepository
 from app.services.audit import write_audit_log
+from app.services.referral_service import (
+    consume_pending_referral_reward_days,
+    get_pending_referral_reward_days,
+    grant_referral_reward_for_first_payment,
+)
 from app.services.subscriptions import activate_or_extend_subscription
 from app.utils.datetime import ensure_aware_utc, utcnow
 from app.utils.encoding import safe_ui_text
@@ -304,12 +309,15 @@ async def sync_crypto_invoice(
         )
 
     paid_at = remote.paid_at or current_time
+    referral_bonus_days = await get_pending_referral_reward_days(session, user_id=invoice.user_id)
+    duration_override = tariff.duration_days + referral_bonus_days if referral_bonus_days > 0 else None
     subscription_change = await activate_or_extend_subscription(
         session,
         user_id=invoice.user_id,
         tariff=tariff,
         paid_at=paid_at,
         source="crypto_pay",
+        duration_days_override=duration_override,
     )
     payment = await payment_repository.create_paid(
         user_id=invoice.user_id,
@@ -322,6 +330,21 @@ async def sync_crypto_invoice(
         provider_payment_charge_id=invoice.external_id,
         invoice_payload=remote.payload or invoice.external_id,
         raw_payload=json.dumps(remote.raw_payload, ensure_ascii=False, sort_keys=True),
+        paid_at=paid_at,
+    )
+    if referral_bonus_days > 0:
+        await consume_pending_referral_reward_days(
+            session,
+            user_id=invoice.user_id,
+            payment=payment,
+            consumed_days=referral_bonus_days,
+            consumed_at=paid_at,
+        )
+    await grant_referral_reward_for_first_payment(
+        session,
+        referred_user_id=invoice.user_id,
+        payment=payment,
+        reward_days=settings.referral_reward_days,
         paid_at=paid_at,
     )
     invoice.paid_at = paid_at

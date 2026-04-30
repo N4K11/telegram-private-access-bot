@@ -20,6 +20,7 @@ from app.bot.keyboards.user import (
 from app.bot.rendering import render_section
 from app.config import Settings
 from app.db.models import Tariff
+from app.db.repositories.payments import PaymentRepository
 from app.db.repositories.tariffs import TariffRepository
 from app.db.repositories.users import UserRepository
 from app.services.audit import write_audit_log
@@ -32,9 +33,16 @@ from app.services.payments.crypto_pay import (
 from app.services.payments.stars import (
     STARS_CURRENCY,
     StarsInvoiceError,
+    build_stars_invoice_payload,
     parse_stars_invoice_payload,
     process_successful_stars_payment,
     send_stars_invoice,
+)
+from app.services.promo_service import (
+    PromoCodeError,
+    consume_discount_redemption,
+    get_discount_quote_for_redemption,
+    get_pending_discount_quote_for_tariff,
 )
 from app.services.tariffs import TariffValidationError, ensure_channel_can_host_tariff
 from app.services.texts import render_text
@@ -68,6 +76,7 @@ async def _text(
 
 def _safe_tariff_name(tariff: Tariff) -> str:
     return safe_ui_text(tariff.name, f"Тариф #{tariff.id}")
+
 
 
 def _safe_channel_name(tariff: Tariff) -> str:
@@ -174,6 +183,7 @@ async def _load_active_tariff(session: AsyncSession, tariff_id: int) -> Tariff |
     except TariffValidationError:
         return None
     return tariff
+
 
 
 def _render_crypto_invoice_text(
@@ -368,8 +378,27 @@ async def buy_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
         await callback.answer("Тариф недоступен.", show_alert=True)
         return
 
+    promo_quote = None
+    if user is not None:
+        promo_quote = await get_pending_discount_quote_for_tariff(
+            session,
+            user_id=user.id,
+            tariff=tariff,
+        )
+
+    invoice_payload = build_stars_invoice_payload(
+        tariff.id,
+        promo_redemption_id=promo_quote.redemption.id if promo_quote is not None else None,
+    )
+    invoice_amount = promo_quote.final_amount if promo_quote is not None else tariff.price_stars
+
     try:
-        await send_stars_invoice(callback.message, tariff)
+        await send_stars_invoice(
+            callback.message,
+            tariff,
+            amount=invoice_amount,
+            payload=invoice_payload,
+        )
     except Exception:
         logger.exception("Failed to send Stars invoice for tariff %s", tariff_id)
         await callback.answer("Не удалось отправить счёт на оплату.", show_alert=True)
@@ -377,11 +406,23 @@ async def buy_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
 
     if user is not None:
         try:
+            payload = {
+                "tariff_id": tariff.id,
+                "amount": invoice_amount,
+            }
+            if promo_quote is not None:
+                payload.update(
+                    {
+                        "promo_code": promo_quote.promo_code.code,
+                        "full_amount": promo_quote.original_amount,
+                        "discount_amount": promo_quote.savings_amount,
+                    }
+                )
             await write_audit_log(
                 session,
                 action="invoice_created_stars",
                 target_user_id=user.id,
-                payload={"tariff_id": tariff.id, "amount": tariff.price_stars},
+                payload=payload,
             )
             await session.commit()
         except Exception:
@@ -391,6 +432,11 @@ async def buy_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
                 user.id,
             )
 
+    if promo_quote is not None:
+        await callback.answer(
+            f"Счёт отправлен со скидкой {promo_quote.description} по коду {promo_quote.promo_code.code}."
+        )
+        return
     await callback.answer("Счёт отправлен.")
 
 
@@ -408,9 +454,21 @@ async def pre_checkout_handler(query: PreCheckoutQuery, session: AsyncSession) -
             raise StarsInvoiceError("Тариф недоступен.")
         if query.currency != STARS_CURRENCY:
             raise StarsInvoiceError("Поддерживаются только Telegram Stars.")
-        if query.total_amount != tariff.price_stars:
+
+        if payload.promo_redemption_id is not None:
+            if user is None:
+                raise StarsInvoiceError("Промокод больше недоступен.")
+            quote = await get_discount_quote_for_redemption(
+                session,
+                redemption_id=payload.promo_redemption_id,
+                user_id=user.id,
+                tariff=tariff,
+            )
+            if query.total_amount != quote.final_amount:
+                raise StarsInvoiceError("Цена изменилась. Открой тариф заново.")
+        elif query.total_amount != tariff.price_stars:
             raise StarsInvoiceError("Цена изменилась. Открой тариф заново.")
-    except StarsInvoiceError as exc:
+    except (PromoCodeError, StarsInvoiceError) as exc:
         await query.answer(ok=False, error_message=str(exc))
         return
 
@@ -435,34 +493,69 @@ async def successful_payment_handler(
             admin_ids=settings.admin_ids_set,
         )
 
+    existing_payment = await PaymentRepository(session).get_by_telegram_charge_id(
+        message.successful_payment.telegram_payment_charge_id
+    )
+    if existing_payment is not None:
+        await message.answer("Платёж уже обработан.")
+        return
+
+    promo_quote = None
     try:
         payload = parse_stars_invoice_payload(message.successful_payment.invoice_payload)
         tariff = await TariffRepository(session).get_by_id(payload.tariff_id)
         if tariff is None:
             raise StarsInvoiceError("Тариф не найден.")
 
+        if payload.promo_redemption_id is not None:
+            promo_quote = await get_discount_quote_for_redemption(
+                session,
+                redemption_id=payload.promo_redemption_id,
+                user_id=user.id,
+                tariff=tariff,
+                now=message.date,
+            )
+
         result = await process_successful_stars_payment(
             session,
             user_id=user.id,
             tariff=tariff,
             successful_payment=message.successful_payment,
+            expected_amount=promo_quote.final_amount if promo_quote is not None else tariff.price_stars,
             paid_at=message.date,
+            referral_reward_days=settings.referral_reward_days,
         )
+        if promo_quote is not None and result.payment is not None:
+            await consume_discount_redemption(
+                session,
+                quote=promo_quote,
+                payment=result.payment,
+                used_at=message.date,
+            )
         if not result.is_duplicate:
+            payload_dict = {
+                "tariff_id": tariff.id,
+                "amount": message.successful_payment.total_amount,
+                "telegram_payment_charge_id": (
+                    message.successful_payment.telegram_payment_charge_id
+                ),
+            }
+            if promo_quote is not None:
+                payload_dict.update(
+                    {
+                        "promo_code": promo_quote.promo_code.code,
+                        "discount_amount": promo_quote.savings_amount,
+                        "full_amount": promo_quote.original_amount,
+                    }
+                )
             await write_audit_log(
                 session,
                 action="payment_paid_stars",
                 target_user_id=user.id,
-                payload={
-                    "tariff_id": tariff.id,
-                    "amount": message.successful_payment.total_amount,
-                    "telegram_payment_charge_id": (
-                        message.successful_payment.telegram_payment_charge_id
-                    ),
-                },
+                payload=payload_dict,
             )
         await session.commit()
-    except StarsInvoiceError as exc:
+    except (PromoCodeError, StarsInvoiceError) as exc:
         await session.rollback()
         await message.answer(await _text(session, "payment_failed", reason=str(exc)))
         await message.answer(await _text(session, "paysupport"))
@@ -535,5 +628,3 @@ async def successful_payment_handler(
             invite_error=invite_error,
         )
     )
-
-

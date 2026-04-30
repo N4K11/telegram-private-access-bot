@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from sqlalchemy import inspect
 
@@ -31,5 +31,7 @@ async def test_metadata_creates_core_tables() -> None:
         "broadcast_deliveries",
         "backup_records",
         "crypto_invoices",
+        "promo_codes",
+        "promo_redemptions",
     }
     assert expected.issubset(set(table_names))
