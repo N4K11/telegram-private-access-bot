@@ -3,6 +3,10 @@ from __future__ import annotations
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
 
+def is_not_modified_error(exc: Exception) -> bool:
+    return "message is not modified" in str(exc).lower()
+
+
 async def edit_or_answer(
     event: Message | CallbackQuery,
     *,
@@ -17,8 +21,10 @@ async def edit_or_answer(
             await callback_message.edit_text(text, reply_markup=reply_markup)
             await callback_answer()
             return
-        except Exception:
-            pass
+        except Exception as exc:
+            if is_not_modified_error(exc):
+                await callback_answer()
+                return
 
         await callback_message.answer(text, reply_markup=reply_markup)
         await callback_answer()

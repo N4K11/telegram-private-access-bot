@@ -5,7 +5,7 @@ from app.bot.keyboards.admin import admin_main_menu_keyboard
 from app.bot.keyboards.user import user_main_menu_keyboard, user_section_keyboard
 from app.bot.routers.admin.dashboard import admin_panel, admin_section
 from app.bot.routers.common import edit_or_answer
-from app.bot.routers.user.start import help_section, start_handler
+from app.bot.routers.user.start import help_section, start_handler, user_home
 
 
 class DummyUser:
@@ -15,12 +15,21 @@ class DummyUser:
 
 
 class DummyMessage:
-    def __init__(self, *, fail_edit: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        fail_edit: bool = False,
+        fail_media: bool = False,
+        has_photo: bool = False,
+    ) -> None:
         self.from_user = DummyUser()
         self.answer_calls: list[tuple[str, object | None]] = []
         self.photo_calls: list[tuple[object, str | None, object | None]] = []
         self.edit_calls: list[tuple[str, object | None]] = []
+        self.media_calls: list[tuple[object, object | None]] = []
+        self.photo = [object()] if has_photo else None
         self._fail_edit = fail_edit
+        self._fail_media = fail_media
 
     async def answer(self, text: str, reply_markup=None) -> None:
         self.answer_calls.append((text, reply_markup))
@@ -33,11 +42,27 @@ class DummyMessage:
             raise RuntimeError("edit failed")
         self.edit_calls.append((text, reply_markup))
 
+    async def edit_media(self, media, reply_markup=None) -> None:
+        if self._fail_media:
+            raise RuntimeError("media edit failed")
+        self.media_calls.append((media, reply_markup))
+
 
 class DummyCallback:
-    def __init__(self, data: str, *, fail_edit: bool = False) -> None:
+    def __init__(
+        self,
+        data: str,
+        *,
+        fail_edit: bool = False,
+        fail_media: bool = False,
+        has_photo: bool = False,
+    ) -> None:
         self.data = data
-        self.message = DummyMessage(fail_edit=fail_edit)
+        self.message = DummyMessage(
+            fail_edit=fail_edit,
+            fail_media=fail_media,
+            has_photo=has_photo,
+        )
         self.from_user = DummyUser(user_id=1)
         self.answer_count = 0
         self.answer_payloads: list[tuple[tuple[object, ...], dict[str, object]]] = []
@@ -102,15 +127,34 @@ async def test_edit_or_answer_falls_back_to_new_message() -> None:
     assert callback.answer_count == 1
 
 
-async def test_help_section_navigation_renders_photo_with_back_and_home() -> None:
-    callback = DummyCallback("menu:user:help")
+async def test_help_section_navigation_edits_banner_in_place() -> None:
+    callback = DummyCallback("menu:user:help", has_photo=True)
 
     await help_section(callback)
 
-    assert callback.message.photo_calls
-    _, caption, markup = callback.message.photo_calls[0]
-    assert "Помощь" in caption
+    assert callback.message.photo_calls == []
+    assert len(callback.message.media_calls) == 1
+    media, markup = callback.message.media_calls[0]
+    assert "Помощь" in media.caption
     assert _flatten_button_texts(markup) == ["⬅️ Назад", "🏠 Главное меню"]
+    assert callback.answer_count == 1
+
+
+async def test_user_home_from_text_callback_keeps_single_message() -> None:
+    callback = DummyCallback("menu:user:home", has_photo=False)
+
+    await user_home(callback)
+
+    assert callback.message.photo_calls == []
+    assert callback.message.media_calls == []
+    assert len(callback.message.edit_calls) == 1
+    text, markup = callback.message.edit_calls[0]
+    assert "Привет, Anna!" in text
+    assert _row_texts(markup) == [
+        ["💎 Купить доступ", "📦 Тарифы"],
+        ["👤 Мой профиль", "🔗 Получить ссылку"],
+        ["❓ Помощь"],
+    ]
     assert callback.answer_count == 1
 
 
