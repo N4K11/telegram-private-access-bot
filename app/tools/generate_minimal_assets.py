@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import math
 import struct
@@ -111,10 +111,16 @@ def _chunk(tag: bytes, data: bytes) -> bytes:
 
 
 def _draw_banner_frame(canvas: Canvas) -> None:
-    canvas.fill_circle(1320, 150, 120, PALE_SKY)
-    canvas.fill_circle(1260, 760, 280, PALE_SAGE)
-    canvas.fill_rounded_rect(150, 255, 730, 390, 42, WHITE)
-    canvas.stroke_rect(150, 255, 730, 390, 2, LINE)
+    canvas.fill_circle(800, 448, 212, WHITE)
+    canvas.fill_circle(906, 620, 246, PALE_SAGE)
+    canvas.fill_circle(1040, 172, 110, PALE_SKY)
+    canvas.fill_circle(564, 272, 76, WHITE)
+    canvas.fill_circle(504, 652, 46, PALE_SKY)
+    canvas.fill_circle(1148, 492, 36, WHITE)
+    canvas.line(620, 306, 664, 262, 8, SKY)
+    canvas.line(978, 258, 1020, 290, 8, SAGE)
+    canvas.line(1078, 324, 1126, 276, 8, SKY)
+    canvas.line(582, 566, 630, 614, 8, SAGE)
 
 
 def _draw_shield(canvas: Canvas, cx: int, cy: int) -> None:
@@ -220,51 +226,51 @@ def _draw_buy(canvas: Canvas, cx: int, cy: int) -> None:
 def _draw_main_banner() -> Canvas:
     canvas = Canvas.create(1600, 900, OFF_WHITE)
     _draw_banner_frame(canvas)
-    _draw_shield(canvas, 1180, 428)
-    canvas.line(1308, 338, 1344, 364, 8, SAGE)
-    canvas.line(1010, 548, 972, 584, 8, SKY)
+    _draw_shield(canvas, 800, 430)
+    canvas.line(922, 342, 958, 368, 8, SAGE)
+    canvas.line(672, 536, 634, 572, 8, SKY)
     return canvas
 
 
 def _draw_buy_banner() -> Canvas:
     canvas = Canvas.create(1600, 900, OFF_WHITE)
     _draw_banner_frame(canvas)
-    _draw_buy(canvas, 1170, 432)
+    _draw_buy(canvas, 736, 434)
     return canvas
 
 
 def _draw_tariffs_banner() -> Canvas:
     canvas = Canvas.create(1600, 900, OFF_WHITE)
     _draw_banner_frame(canvas)
-    _draw_pricing_cards(canvas, 1160, 406)
+    _draw_pricing_cards(canvas, 754, 406)
     return canvas
 
 
 def _draw_profile_banner() -> Canvas:
     canvas = Canvas.create(1600, 900, OFF_WHITE)
     _draw_banner_frame(canvas)
-    _draw_user(canvas, 1174, 440)
+    _draw_user(canvas, 800, 440)
     return canvas
 
 
 def _draw_join_banner() -> Canvas:
     canvas = Canvas.create(1600, 900, OFF_WHITE)
     _draw_banner_frame(canvas)
-    _draw_link(canvas, 1166, 432)
+    _draw_link(canvas, 792, 432)
     return canvas
 
 
 def _draw_help_banner() -> Canvas:
     canvas = Canvas.create(1600, 900, OFF_WHITE)
     _draw_banner_frame(canvas)
-    _draw_help(canvas, 1178, 430)
+    _draw_help(canvas, 744, 430)
     return canvas
 
 
 def _draw_admin_banner() -> Canvas:
     canvas = Canvas.create(1600, 900, OFF_WHITE)
     _draw_banner_frame(canvas)
-    _draw_dashboard(canvas, 1166, 434)
+    _draw_dashboard(canvas, 776, 434)
     return canvas
 
 
@@ -303,4 +309,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
