@@ -1,0 +1,34 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="cardShadow" x="110" y="172" width="668" height="530" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="24" flood-color="#223336" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" rx="48" fill="#F6F7F3"/>
+  <circle cx="1358" cy="768" r="320" fill="#E7F1EC"/>
+  <circle cx="1290" cy="184" r="118" fill="#EAF2F8"/>
+  <text x="120" y="170" fill="#223336" font-family="Segoe UI, sans-serif" font-size="72" font-weight="600">Главное меню</text>
+  <text x="120" y="228" fill="#6C7C80" font-family="Segoe UI, sans-serif" font-size="28">Главные действия и быстрый доступ к функциям бота.</text>
+  <g filter="url(#cardShadow)">
+    <rect x="150" y="270" width="588" height="382" rx="42" fill="#FFFFFF"/>
+  </g>
+  <rect x="196" y="318" width="270" height="84" rx="28" fill="#EEF4EF"/>
+  <text x="236" y="371" fill="#223336" font-family="Segoe UI, sans-serif" font-size="30" font-weight="600">Моя подписка</text>
+  <rect x="196" y="426" width="240" height="84" rx="28" fill="#EAF2F8"/>
+  <text x="236" y="479" fill="#223336" font-family="Segoe UI, sans-serif" font-size="30" font-weight="600">Тарифы</text>
+  <rect x="196" y="534" width="256" height="84" rx="28" fill="#E8F4F0"/>
+  <text x="236" y="587" fill="#223336" font-family="Segoe UI, sans-serif" font-size="30" font-weight="600">Поддержка</text>
+  <rect x="486" y="372" width="206" height="198" rx="34" fill="#223336"/>
+  <circle cx="589" cy="438" r="30" fill="#7CC9B7"/>
+  <rect x="546" y="490" width="86" height="18" rx="9" fill="#F6F7F3"/>
+  <rect x="526" y="530" width="126" height="18" rx="9" fill="#F6F7F3" fill-opacity="0.72"/>
+  <g>
+    <circle cx="1180" cy="430" r="174" fill="#FFFFFF"/>
+    <circle cx="1180" cy="430" r="174" stroke="#DDE9E0" stroke-width="2"/>
+    <rect x="1088" y="340" width="184" height="184" rx="44" stroke="#223336" stroke-width="28"/>
+    <path d="M1134 430H1226" stroke="#223336" stroke-width="28" stroke-linecap="round"/>
+    <path d="M1180 384V476" stroke="#223336" stroke-width="28" stroke-linecap="round"/>
+    <path d="M1296 338L1344 372" stroke="#7CC9B7" stroke-width="18" stroke-linecap="round"/>
+    <path d="M1022 548L976 586" stroke="#8FB8E8" stroke-width="18" stroke-linecap="round"/>
+  </g>
+</svg>

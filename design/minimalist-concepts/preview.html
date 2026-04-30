@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minimalist Bot Concepts</title>
+  <style>
+    :root {
+      --bg: #eff3ee;
+      --panel: #ffffff;
+      --text: #223336;
+      --muted: #6c7c80;
+      --line: #d7e1da;
+      --mint: #7cc9b7;
+      --sky: #8fb8e8;
+      --sage: #dde9e0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px;
+      font-family: "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(143, 184, 232, 0.28), transparent 28%),
+        radial-gradient(circle at bottom left, rgba(124, 201, 183, 0.22), transparent 24%),
+        var(--bg);
+    }
+
+    .wrap {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    .hero {
+      margin-bottom: 28px;
+      padding: 28px;
+      border: 1px solid rgba(215, 225, 218, 0.9);
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 20px 60px rgba(34, 51, 54, 0.08);
+      backdrop-filter: blur(8px);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .palette {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+      flex-wrap: wrap;
+    }
+
+    .swatch {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #f8faf8;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1px solid rgba(34, 51, 54, 0.08);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      padding: 18px;
+      border-radius: 24px;
+      border: 1px solid rgba(215, 225, 218, 0.9);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 18px 42px rgba(34, 51, 54, 0.07);
+    }
+
+    .card h2 {
+      margin: 0 0 6px;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .card p {
+      margin-bottom: 14px;
+      font-size: 14px;
+    }
+
+    img {
+      display: block;
+      width: 100%;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: #f7faf7;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Minimalist Bot Concepts</h1>
+      <p>Серия концептов для Telegram-бота с единым минималистичным стилем: светлая основа, спокойные акценты, геометрические формы и хорошие пропорции для маленьких экранов.</p>
+      <div class="palette">
+        <span class="swatch"><span class="dot" style="background:#f6f7f3"></span>#F6F7F3</span>
+        <span class="swatch"><span class="dot" style="background:#223336"></span>#223336</span>
+        <span class="swatch"><span class="dot" style="background:#7cc9b7"></span>#7CC9B7</span>
+        <span class="swatch"><span class="dot" style="background:#8fb8e8"></span>#8FB8E8</span>
+        <span class="swatch"><span class="dot" style="background:#dde9e0"></span>#DDE9E0</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Avatar 01</h2>
+        <p>Доступ + навигация. Рекомендован как основной кандидат под бренд бота.</p>
+        <img src="avatar-concept-01.svg" alt="Avatar concept 01">
+      </article>
+
+      <article class="card">
+        <h2>Avatar 02</h2>
+        <p>Более нейтральная монограмма. Подходит, если нужен чистый брендовый знак.</p>
+        <img src="avatar-concept-02.svg" alt="Avatar concept 02">
+      </article>
+
+      <article class="card">
+        <h2>Avatar 03</h2>
+        <p>Символ доступа через ссылку. Визуально ближе к подпискам и инвайтам.</p>
+        <img src="avatar-concept-03.svg" alt="Avatar concept 03">
+      </article>
+
+      <article class="card">
+        <h2>Главное меню</h2>
+        <p>Большой воздух, плавающие карточки и мягкая навигационная композиция.</p>
+        <img src="menu-main.svg" alt="Main menu concept">
+      </article>
+
+      <article class="card">
+        <h2>Профиль</h2>
+        <p>Акцент на статусе пользователя, подписке и компактной статистике.</p>
+        <img src="menu-profile.svg" alt="Profile concept">
+      </article>
+
+      <article class="card">
+        <h2>Покупка тарифа</h2>
+        <p>Фокус на длительности, цене и мягком ощущении безопасной покупки.</p>
+        <img src="menu-tariff.svg" alt="Tariff purchase concept">
+      </article>
+
+      <article class="card">
+        <h2>Поддержка</h2>
+        <p>Чистый экран общения и помощи без визуального шума.</p>
+        <img src="menu-support.svg" alt="Support concept">
+      </article>
+
+      <article class="card">
+        <h2>Получить ссылку</h2>
+        <p>Инвайт, доступ и переход в приватный канал через понятный символ ссылки.</p>
+        <img src="menu-link.svg" alt="Get link concept">
+      </article>
+    </section>
+  </div>
+</body>
+</html>

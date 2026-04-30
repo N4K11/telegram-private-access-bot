@@ -1,0 +1,31 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="104" y="180" width="808" height="572" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="24" flood-color="#223336" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" rx="48" fill="#F6F7F3"/>
+  <circle cx="1310" cy="166" r="114" fill="#EDF4F7"/>
+  <circle cx="1284" cy="740" r="286" fill="#E7F1EC"/>
+  <text x="120" y="170" fill="#223336" font-family="Segoe UI, sans-serif" font-size="72" font-weight="600">Получить ссылку</text>
+  <text x="120" y="228" fill="#6C7C80" font-family="Segoe UI, sans-serif" font-size="28">Экран инвайта с чистым акцентом на доступ в приватный канал.</text>
+  <g filter="url(#shadow)">
+    <rect x="150" y="262" width="728" height="442" rx="42" fill="#FFFFFF"/>
+  </g>
+  <rect x="210" y="322" width="236" height="84" rx="28" fill="#E8F4F0"/>
+  <text x="250" y="375" fill="#223336" font-family="Segoe UI, sans-serif" font-size="30" font-weight="600">Доступ активен</text>
+  <rect x="210" y="434" width="344" height="106" rx="30" fill="#EEF4EF"/>
+  <text x="252" y="480" fill="#6C7C80" font-family="Segoe UI, sans-serif" font-size="24">Ссылка готова</text>
+  <text x="252" y="516" fill="#223336" font-family="Segoe UI, sans-serif" font-size="38" font-weight="600">Перейти в канал</text>
+  <rect x="210" y="570" width="198" height="74" rx="24" fill="#EAF2F8"/>
+  <text x="250" y="616" fill="#223336" font-family="Segoe UI, sans-serif" font-size="26" font-weight="600">1 инвайт</text>
+  <g>
+    <circle cx="1180" cy="440" r="194" fill="#FFFFFF"/>
+    <circle cx="1180" cy="440" r="194" stroke="#DDE9E0" stroke-width="2"/>
+    <path d="M1100 434C1100 403.072 1125.07 378 1156 378H1202" stroke="#223336" stroke-width="26" stroke-linecap="round"/>
+    <path d="M1258 446C1258 476.928 1232.93 502 1202 502H1158" stroke="#223336" stroke-width="26" stroke-linecap="round"/>
+    <path d="M1182 390L1236 390C1266.93 390 1292 415.072 1292 446C1292 476.928 1266.93 502 1236 502H1182" stroke="#7CC9B7" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M1084 556L1150 556" stroke="#223336" stroke-width="26" stroke-linecap="round"/>
+    <path d="M1142 516L1188 556L1142 596" stroke="#223336" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

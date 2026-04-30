@@ -1,0 +1,17 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="188" y="188" width="648" height="648" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="30" flood-color="#223336" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="240" fill="#F6F7F3"/>
+  <circle cx="512" cy="512" r="352" fill="#EDF4F7"/>
+  <circle cx="322" cy="318" r="42" fill="#7CC9B7" fill-opacity="0.8"/>
+  <circle cx="716" cy="714" r="42" fill="#8FB8E8" fill-opacity="0.8"/>
+  <g filter="url(#shadow)">
+    <rect x="278" y="278" width="468" height="468" rx="140" fill="#FFFFFF"/>
+  </g>
+  <path d="M418 434C418 396.445 448.445 366 486 366H550C587.555 366 618 396.445 618 434V458H584V438C584 413.699 564.301 394 540 394H496C471.699 394 452 413.699 452 438V522C452 546.301 471.699 566 496 566H530V600H486C448.445 600 418 569.555 418 532V434Z" fill="#223336"/>
+  <path d="M606 590C606 627.555 575.555 658 538 658H474C436.445 658 406 627.555 406 590V566H440V586C440 610.301 459.699 630 484 630H528C552.301 630 572 610.301 572 586V502C572 477.699 552.301 458 528 458H494V424H538C575.555 424 606 454.445 606 492V590Z" fill="#7CC9B7"/>
+  <circle cx="512" cy="512" r="40" fill="#8FB8E8"/>
+</svg>

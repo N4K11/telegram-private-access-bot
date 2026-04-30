@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import inspect
 from datetime import UTC, datetime
@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.assets import get_banner_path
 from app.bot.keyboards.user import (
     user_main_menu_keyboard,
     user_profile_keyboard,
@@ -17,7 +18,7 @@ from app.bot.keyboards.user import (
     user_section_keyboard,
     user_subscription_keyboard,
 )
-from app.bot.routers.common import edit_or_answer
+from app.bot.rendering import render_section
 from app.config import Settings
 from app.db.models import Subscription, User
 from app.db.repositories.payments import PaymentRepository
@@ -186,11 +187,11 @@ async def _render_invite_picker_text(
     for subscription in active_subscriptions:
         channel_name = safe_ui_text(
             subscription.channel.title,
-            f"\u041a\u0430\u043d\u0430\u043b #{subscription.channel_id}",
+            f"Канал #{subscription.channel_id}",
         )
         expires_at = format_datetime(subscription.expires_at, timezone)
         subscription_lines.append(
-            f"\u2022 {escape(channel_name)} \u2014 \u0434\u043e {expires_at}"
+            f"• {escape(channel_name)} — до {expires_at}"
         )
     subscriptions_block = "\n".join(subscription_lines)
     return await _text(
@@ -208,8 +209,9 @@ async def start_handler(
 ) -> None:
     user = await _load_db_user(session, message.from_user.id if message.from_user else None)
     timezone = settings.timezone if settings is not None else "UTC"
-    await message.answer(
-        await _render_start_text(
+    await render_section(
+        message,
+        text=await _render_start_text(
             session,
             telegram_user=message.from_user,
             user=user,
@@ -222,6 +224,7 @@ async def start_handler(
                 user=user,
             )
         ),
+        banner_path=get_banner_path("main"),
     )
 
 
@@ -233,7 +236,7 @@ async def user_home(
 ) -> None:
     user = await _load_db_user(session, callback.from_user.id if callback.from_user else None)
     timezone = settings.timezone if settings is not None else "UTC"
-    await edit_or_answer(
+    await render_section(
         callback,
         text=await _render_start_text(
             session,
@@ -248,6 +251,7 @@ async def user_home(
                 user=user,
             )
         ),
+        banner_path=get_banner_path("main"),
     )
 
 
@@ -261,7 +265,7 @@ async def profile_section(
     user = await _load_db_user(session, callback.from_user.id if callback.from_user else None)
     timezone = settings.timezone if settings is not None else "UTC"
     active_subscriptions = await _load_active_subscriptions(session, user)
-    await edit_or_answer(
+    await render_section(
         callback,
         text=await _render_profile_text(
             session,
@@ -270,16 +274,18 @@ async def profile_section(
             timezone=timezone,
         ),
         reply_markup=user_profile_keyboard(has_active_subscription=bool(active_subscriptions)),
+        banner_path=get_banner_path("profile"),
     )
 
 
 @router.callback_query(F.data == "menu:user:help")
 @router.callback_query(F.data == "menu:user:support")
 async def help_section(callback: CallbackQuery, session: AsyncSession | None = None) -> None:
-    await edit_or_answer(
+    await render_section(
         callback,
         text=await _text(session, "user_support"),
         reply_markup=user_section_keyboard(),
+        banner_path=get_banner_path("help"),
     )
 
 
@@ -292,15 +298,16 @@ async def invite_section(
     user = await _load_db_user(session, callback.from_user.id if callback.from_user else None)
     active_subscriptions = await _load_active_subscriptions(session, user)
     if not active_subscriptions:
-        await edit_or_answer(
+        await render_section(
             callback,
             text=await _text(session, "user_invite_missing"),
             reply_markup=user_purchase_prompt_keyboard(),
+            banner_path=get_banner_path("join"),
         )
         return
 
     timezone = settings.timezone if settings is not None else "UTC"
-    await edit_or_answer(
+    await render_section(
         callback,
         text=await _render_invite_picker_text(
             session,
@@ -308,6 +315,7 @@ async def invite_section(
             timezone=timezone,
         ),
         reply_markup=user_subscription_keyboard(active_subscriptions),
+        banner_path=get_banner_path("join"),
     )
 
 

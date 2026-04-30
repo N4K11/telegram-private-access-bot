@@ -1,0 +1,30 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="102" y="188" width="812" height="556" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="24" flood-color="#223336" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" rx="48" fill="#F6F7F3"/>
+  <circle cx="1334" cy="196" r="128" fill="#E7F1EC"/>
+  <circle cx="1248" cy="742" r="272" fill="#EDF4F7"/>
+  <text x="120" y="170" fill="#223336" font-family="Segoe UI, sans-serif" font-size="72" font-weight="600">Поддержка</text>
+  <text x="120" y="228" fill="#6C7C80" font-family="Segoe UI, sans-serif" font-size="28">Спокойный экран помощи, вопросов и связи с администратором.</text>
+  <g filter="url(#shadow)">
+    <rect x="150" y="270" width="732" height="392" rx="42" fill="#FFFFFF"/>
+  </g>
+  <rect x="208" y="328" width="340" height="84" rx="28" fill="#EEF4EF"/>
+  <text x="248" y="381" fill="#223336" font-family="Segoe UI, sans-serif" font-size="30" font-weight="600">Частые вопросы</text>
+  <rect x="208" y="434" width="296" height="84" rx="28" fill="#EAF2F8"/>
+  <text x="248" y="487" fill="#223336" font-family="Segoe UI, sans-serif" font-size="30" font-weight="600">Написать в поддержку</text>
+  <rect x="208" y="540" width="244" height="72" rx="24" fill="#F0F5F1"/>
+  <text x="248" y="585" fill="#223336" font-family="Segoe UI, sans-serif" font-size="26" font-weight="600">Быстрый ответ</text>
+  <g>
+    <circle cx="1178" cy="432" r="192" fill="#FFFFFF"/>
+    <circle cx="1178" cy="432" r="192" stroke="#DDE9E0" stroke-width="2"/>
+    <path d="M1068 426C1068 364.144 1118.14 314 1180 314C1241.86 314 1292 364.144 1292 426V444C1292 463.882 1275.88 480 1256 480H1236V408H1256V426" stroke="#223336" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M1068 444C1068 463.882 1084.12 480 1104 480H1124V408H1104V444Z" stroke="#223336" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M1126 520C1144 540 1168 550 1192 550H1228" stroke="#223336" stroke-width="24" stroke-linecap="round"/>
+    <rect x="1218" y="534" width="60" height="32" rx="16" fill="#7CC9B7"/>
+    <path d="M1026 560L988 592" stroke="#8FB8E8" stroke-width="18" stroke-linecap="round"/>
+  </g>
+</svg>

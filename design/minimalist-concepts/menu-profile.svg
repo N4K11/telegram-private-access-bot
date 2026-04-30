@@ -1,0 +1,39 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="110" y="196" width="780" height="570" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="24" flood-color="#223336" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="900" rx="48" fill="#F6F7F3"/>
+  <circle cx="1360" cy="156" r="116" fill="#EAF2F8"/>
+  <circle cx="1270" cy="724" r="278" fill="#E7F1EC"/>
+  <text x="120" y="170" fill="#223336" font-family="Segoe UI, sans-serif" font-size="72" font-weight="600">Профиль</text>
+  <text x="120" y="228" fill="#6C7C80" font-family="Segoe UI, sans-serif" font-size="28">Статус пользователя, активная подписка и ключевые данные.</text>
+  <g filter="url(#shadow)">
+    <rect x="150" y="280" width="700" height="438" rx="42" fill="#FFFFFF"/>
+  </g>
+  <circle cx="314" cy="432" r="92" fill="#EEF4EF"/>
+  <circle cx="314" cy="404" r="34" stroke="#223336" stroke-width="18"/>
+  <path d="M258 492C268 454 298 436 314 436C330 436 360 454 370 492" stroke="#223336" stroke-width="18" stroke-linecap="round"/>
+  <rect x="432" y="346" width="156" height="52" rx="26" fill="#E8F4F0"/>
+  <text x="468" y="380" fill="#223336" font-family="Segoe UI, sans-serif" font-size="22" font-weight="600">Активен</text>
+  <text x="432" y="458" fill="#223336" font-family="Segoe UI, sans-serif" font-size="46" font-weight="600">Руслан</text>
+  <text x="432" y="508" fill="#6C7C80" font-family="Segoe UI, sans-serif" font-size="26">@premium_user</text>
+  <rect x="218" y="584" width="164" height="92" rx="28" fill="#EEF4EF"/>
+  <text x="248" y="622" fill="#6C7C80" font-family="Segoe UI, sans-serif" font-size="22">Тариф</text>
+  <text x="248" y="656" fill="#223336" font-family="Segoe UI, sans-serif" font-size="26" font-weight="600">30 дней</text>
+  <rect x="406" y="584" width="164" height="92" rx="28" fill="#EAF2F8"/>
+  <text x="436" y="622" fill="#6C7C80" font-family="Segoe UI, sans-serif" font-size="22">Оплачено</text>
+  <text x="436" y="656" fill="#223336" font-family="Segoe UI, sans-serif" font-size="26" font-weight="600">299 XTR</text>
+  <rect x="594" y="584" width="164" height="92" rx="28" fill="#F0F5F1"/>
+  <text x="624" y="622" fill="#6C7C80" font-family="Segoe UI, sans-serif" font-size="22">Доступ</text>
+  <text x="624" y="656" fill="#223336" font-family="Segoe UI, sans-serif" font-size="26" font-weight="600">До 30 мая</text>
+  <g>
+    <circle cx="1172" cy="436" r="192" fill="#FFFFFF"/>
+    <circle cx="1172" cy="436" r="192" stroke="#DDE9E0" stroke-width="2"/>
+    <circle cx="1172" cy="384" r="62" stroke="#223336" stroke-width="26"/>
+    <path d="M1078 548C1096 488 1142 458 1172 458C1202 458 1248 488 1266 548" stroke="#223336" stroke-width="26" stroke-linecap="round"/>
+    <path d="M1334 356L1376 330" stroke="#7CC9B7" stroke-width="18" stroke-linecap="round"/>
+    <path d="M1008 606L968 632" stroke="#8FB8E8" stroke-width="18" stroke-linecap="round"/>
+  </g>
+</svg>

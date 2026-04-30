@@ -1,11 +1,13 @@
-# Telegram Private Access Bot
+﻿# Telegram Private Access Bot
 
 Production-oriented Telegram bot for selling access to private channels with Telegram Stars as the default payment method and optional Crypto Pay support.
 
 ## Implemented features
 
 - Russian user and admin inline navigation.
+- Minimalist runtime banners with safe text-only fallback.
 - Channel and tariff management from the admin panel.
+- `/admin_channel_check` for live channel diagnostics and bot rights verification.
 - Telegram Stars payments with idempotent processing.
 - Optional Crypto Pay invoices with reconciliation worker and webhook processor.
 - Personal invite links for active subscriptions.
@@ -36,6 +38,7 @@ pytest -q
 alembic upgrade head
 python -m app.main
 python -m app.healthcheck
+python -m app.tools.generate_minimal_assets
 ```
 
 ## Docker
@@ -63,13 +66,20 @@ Optional production flags:
 - `RATE_LIMIT_*`
 - `PUBLIC_WEBHOOK_URL`
 
+## Admin commands
+
+- `/admin`
+- `/admin_channel_check`
+
 ## Project layout
 
 - `app/` application code.
 - `app/bot/` routers, filters, keyboards and middlewares.
-- `app/services/` payment, invite, analytics, backup and text logic.
+- `app/services/` payment, invite, analytics, diagnostics, backup and text logic.
 - `app/db/` models, repositories and session helpers.
 - `app/workers/` background workers.
+- `assets/` runtime PNG banners and avatar.
+- `design/` editable SVG concepts and previews.
 - `tests/` unit and integration tests.
 - `deploy/` deployment artifacts including the systemd example.
 
@@ -80,3 +90,6 @@ See also:
 - `PROJECT_OVERVIEW.md`
 - `CHANGELOG.md`
 - `BACKUP_RESTORE.md`
+- `RUNTIME_MAP.md`
+- `DIAGNOSTICS.md`
+- `VISUAL_ASSETS.md`

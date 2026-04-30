@@ -1,7 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from typing import Literal
 
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -59,7 +60,9 @@ def user_main_menu_keyboard(*, is_admin: bool = False) -> InlineKeyboardMarkup:
         builder.button(text=text, callback_data=callback_data)
     if is_admin:
         builder.button(text=USER_BUTTON_ADMIN_TEXT, callback_data="menu:admin:home")
-    builder.adjust(1)
+        builder.adjust(2, 2, 1, 1)
+    else:
+        builder.adjust(2, 2, 1)
     return builder.as_markup()
 
 
@@ -115,7 +118,11 @@ def user_subscription_keyboard(subscriptions: Sequence[Subscription]) -> InlineK
     return builder.as_markup()
 
 
-def user_tariffs_keyboard(tariffs: Sequence[Tariff]) -> InlineKeyboardMarkup:
+def user_tariffs_keyboard(
+    tariffs: Sequence[Tariff],
+    *,
+    mode: Literal["buy", "browse"] = "buy",
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if not tariffs:
         builder.button(text=USER_BUTTON_REFRESH_TEXT, callback_data="menu:user:tariffs")
@@ -126,10 +133,13 @@ def user_tariffs_keyboard(tariffs: Sequence[Tariff]) -> InlineKeyboardMarkup:
     for index, tariff in enumerate(tariffs):
         title = _safe_tariff_name(tariff)
         icon = _safe_tariff_icon(index)
-        builder.button(
-            text=f"{icon} Купить: {title} — {tariff.price_stars}⭐",
-            callback_data=f"menu:user:buy:stars:{tariff.id}",
-        )
+        if mode == "browse":
+            text = f"{icon} {title} — {tariff.duration_days} дн. / {tariff.price_stars}⭐"
+            callback_data = f"menu:user:tariff:{tariff.id}"
+        else:
+            text = f"{icon} Купить: {title} — {tariff.price_stars}⭐"
+            callback_data = f"menu:user:buy:stars:{tariff.id}"
+        builder.button(text=text, callback_data=callback_data)
     builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")
     builder.adjust(1)
     return builder.as_markup()
