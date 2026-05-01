@@ -1,4 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
+
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +18,11 @@ class TariffRepository:
         result = await self._session.execute(
             select(Tariff)
             .options(selectinload(Tariff.channel))
-            .order_by(Tariff.archived_at.is_(None).desc(), Tariff.sort_order.asc(), Tariff.id.asc())
+            .order_by(
+                Tariff.archived_at.is_(None).desc(),
+                Tariff.sort_order.asc(),
+                Tariff.id.asc(),
+            )
         )
         return list(result.scalars())
 
@@ -41,7 +47,14 @@ class TariffRepository:
     async def create(self, draft: TariffDraft) -> Tariff:
         tariff = Tariff(
             name=draft.name,
+            description=draft.description,
+            badge=draft.badge,
+            is_trial=draft.is_trial,
+            is_lifetime=draft.is_lifetime,
             price_stars=draft.price_stars,
+            price_crypto=draft.crypto_price_amount,
+            crypto_price_amount=draft.crypto_price_amount,
+            crypto_asset=draft.crypto_asset,
             duration_days=draft.duration_days,
             channel_id=draft.channel_id,
             sort_order=draft.sort_order,
@@ -55,7 +68,12 @@ class TariffRepository:
         tariff.is_active = is_active
         return tariff
 
-    async def archive(self, tariff: Tariff, *, archived_at) -> Tariff:
+    async def archive(self, tariff: Tariff, *, archived_at: datetime) -> Tariff:
         tariff.archived_at = archived_at
+        tariff.is_active = False
+        return tariff
+
+    async def unarchive(self, tariff: Tariff) -> Tariff:
+        tariff.archived_at = None
         tariff.is_active = False
         return tariff

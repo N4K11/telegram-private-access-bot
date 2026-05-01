@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Payment, PromoCode, PromoRedemption, Tariff
@@ -29,6 +30,8 @@ DISCOUNT_PROMO_TYPES = {
     PROMO_TYPE_FIXED_PRICE,
 }
 PROMO_CODE_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9_-]{2,63}$")
+_TRUE_VALUES = {"1", "true", "yes", "on", "y", "да"}
+_FALSE_VALUES = {"0", "false", "no", "off", "n", "нет"}
 
 
 class PromoCodeError(ValueError):
@@ -74,7 +77,12 @@ class PromoDraft:
     max_uses: int
     tariff_id: int | None
     valid_days: int | None
-
+    valid_from: datetime | None
+    valid_until: datetime | None
+    first_purchase_only: bool
+    per_user_limit: int | None
+    campaign_name: str | None
+    notes: str | None
 
 
 def normalize_promo_code(raw_code: str) -> str:
@@ -88,7 +96,6 @@ def normalize_promo_code(raw_code: str) -> str:
     return code
 
 
-
 def parse_promo_draft(
     *,
     code: str,
@@ -97,6 +104,12 @@ def parse_promo_draft(
     max_uses: str,
     tariff_id: str | None = None,
     valid_days: str | None = None,
+    valid_from: str | None = None,
+    valid_until: str | None = None,
+    first_purchase_only: str | None = None,
+    per_user_limit: str | None = None,
+    campaign_name: str | None = None,
+    notes: str | None = None,
 ) -> PromoDraft:
     normalized_code = normalize_promo_code(code)
     normalized_type = promo_type.strip().lower()
@@ -135,6 +148,31 @@ def parse_promo_draft(
         if parsed_valid_days <= 0:
             raise PromoCodeError("VALID_DAYS должен быть больше нуля.")
 
+    parsed_valid_from = _parse_optional_datetime(valid_from, label="valid_from")
+    parsed_valid_until = _parse_optional_datetime(valid_until, label="valid_until")
+    if parsed_valid_days is not None and (
+        parsed_valid_from is not None or parsed_valid_until is not None
+    ):
+        raise PromoCodeError("Используйте либо VALID_DAYS, либо пару valid_from/valid_until.")
+    if (
+        parsed_valid_from is not None
+        and parsed_valid_until is not None
+        and parsed_valid_until <= parsed_valid_from
+    ):
+        raise PromoCodeError("valid_until должен быть позже valid_from.")
+
+    parsed_first_purchase_only = _parse_optional_bool(
+        first_purchase_only,
+        label="first_purchase_only",
+        default=False,
+    )
+    parsed_per_user_limit = _parse_optional_positive_int(
+        per_user_limit,
+        label="per_user_limit",
+    )
+    if parsed_per_user_limit is not None and parsed_per_user_limit <= 0:
+        raise PromoCodeError("per_user_limit должен быть больше нуля.")
+
     return PromoDraft(
         code=normalized_code,
         promo_type=normalized_type,
@@ -142,8 +180,38 @@ def parse_promo_draft(
         max_uses=parsed_limit,
         tariff_id=parsed_tariff_id,
         valid_days=parsed_valid_days,
+        valid_from=parsed_valid_from,
+        valid_until=parsed_valid_until,
+        first_purchase_only=parsed_first_purchase_only,
+        per_user_limit=parsed_per_user_limit,
+        campaign_name=_normalize_optional_text(campaign_name, max_length=128),
+        notes=_normalize_optional_text(notes, max_length=1024),
     )
 
+
+async def list_promo_codes(
+    session: AsyncSession,
+    *,
+    search: str | None = None,
+    limit: int = 20,
+) -> list[PromoCode]:
+    return await PromoCodeRepository(session).list_recent(search=search, limit=limit)
+
+
+async def get_promo_code(session: AsyncSession, *, code: str) -> PromoCode:
+    normalized_code = normalize_promo_code(code)
+    promo_code = await PromoCodeRepository(session).get_by_code(normalized_code)
+    if promo_code is None:
+        raise PromoCodeError("Промокод не найден.")
+    return promo_code
+
+
+def effective_promo_valid_until(promo_code: PromoCode) -> datetime | None:
+    return promo_code.valid_until or promo_code.expires_at
+
+
+def effective_promo_per_user_limit(promo_code: PromoCode) -> int:
+    return promo_code.per_user_limit or 1
 
 
 def build_discount_description(
@@ -178,9 +246,18 @@ async def create_promo_code(
 
     _validate_promo_value(draft, tariff=tariff)
     event_time = ensure_aware_utc(now or utcnow())
-    expires_at = None
+
+    resolved_valid_from = draft.valid_from
+    resolved_valid_until = draft.valid_until
     if draft.valid_days is not None:
-        expires_at = event_time + timedelta(days=draft.valid_days)
+        resolved_valid_until = event_time + timedelta(days=draft.valid_days)
+
+    if (
+        resolved_valid_from is not None
+        and resolved_valid_until is not None
+        and resolved_valid_until <= resolved_valid_from
+    ):
+        raise PromoCodeError("Окно действия промокода задано некорректно.")
 
     return await repository.create(
         code=draft.code,
@@ -188,28 +265,26 @@ async def create_promo_code(
         value=draft.value,
         max_uses=draft.max_uses,
         tariff_id=draft.tariff_id,
-        expires_at=expires_at,
+        valid_from=resolved_valid_from,
+        valid_until=resolved_valid_until,
+        expires_at=resolved_valid_until,
+        first_purchase_only=draft.first_purchase_only,
+        per_user_limit=draft.per_user_limit,
+        campaign_name=draft.campaign_name,
+        notes=draft.notes,
         is_active=True,
         created_by_user_id=actor_user_id,
     )
 
 
 async def disable_promo_code(session: AsyncSession, *, code: str) -> PromoCode:
-    normalized_code = normalize_promo_code(code)
-    repository = PromoCodeRepository(session)
-    promo_code = await repository.get_by_code(normalized_code)
-    if promo_code is None:
-        raise PromoCodeError("Промокод не найден.")
-    await repository.set_active(promo_code, is_active=False)
+    promo_code = await get_promo_code(session, code=code)
+    await PromoCodeRepository(session).set_active(promo_code, is_active=False)
     return promo_code
 
 
 async def get_promo_stats(session: AsyncSession, *, code: str) -> PromoStats:
-    normalized_code = normalize_promo_code(code)
-    promo_code = await PromoCodeRepository(session).get_by_code(normalized_code)
-    if promo_code is None:
-        raise PromoCodeError("Промокод не найден.")
-
+    promo_code = await get_promo_code(session, code=code)
     summary = await PromoRedemptionRepository(session).summarize_for_promo(promo_code.id)
     return PromoStats(
         promo_code=promo_code,
@@ -227,33 +302,50 @@ async def apply_promo_code(
     now: datetime | None = None,
 ) -> PromoApplyResult:
     event_time = ensure_aware_utc(now or utcnow())
-    normalized_code = normalize_promo_code(code)
-    promo_code = await PromoCodeRepository(session).get_by_code(normalized_code)
-    if promo_code is None:
-        raise PromoCodeError("Промокод не найден.")
+    promo_code = await get_promo_code(session, code=code)
     _ensure_promo_is_available(promo_code, at=event_time)
 
     redemptions = PromoRedemptionRepository(session)
-    existing = await redemptions.get_by_promo_and_user(promo_code.id, user_id)
-    if existing is not None and existing.status == "consumed":
-        raise PromoCodeError("Этот промокод уже использован этим пользователем.")
+    latest = await redemptions.get_latest_for_promo_and_user(promo_code.id, user_id)
 
     if promo_code.promo_type == PROMO_TYPE_FREE_DAYS:
+        await _ensure_user_usage_available(
+            session,
+            redemptions=redemptions,
+            promo_code=promo_code,
+            user_id=user_id,
+        )
         return await _grant_free_days_promo(
             session,
             redemptions=redemptions,
             promo_code=promo_code,
             user_id=user_id,
-            existing=existing,
             at=event_time,
         )
 
+    if latest is not None and latest.status == "pending":
+        await _ensure_first_purchase_only(session, promo_code=promo_code, user_id=user_id)
+        await redemptions.cancel_other_pending_for_user(
+            user_id=user_id,
+            exclude_redemption_id=latest.id,
+        )
+        return PromoApplyResult(
+            promo_code=promo_code,
+            redemption=latest,
+            action="pending_discount",
+        )
+
+    await _ensure_user_usage_available(
+        session,
+        redemptions=redemptions,
+        promo_code=promo_code,
+        user_id=user_id,
+    )
     return await _activate_discount_promo(
         session,
         redemptions=redemptions,
         promo_code=promo_code,
         user_id=user_id,
-        existing=existing,
     )
 
 
@@ -265,13 +357,15 @@ async def get_pending_discount_quote_for_tariff(
     now: datetime | None = None,
 ) -> PromoDiscountQuote | None:
     event_time = ensure_aware_utc(now or utcnow())
-    pending = await PromoRedemptionRepository(session).list_pending_for_user(user_id)
+    redemptions = PromoRedemptionRepository(session)
+    pending = await redemptions.list_pending_for_user(user_id)
     for redemption in pending:
         promo_code = redemption.promo_code
         if promo_code is None or promo_code.promo_type not in DISCOUNT_PROMO_TYPES:
             continue
         try:
             _ensure_promo_is_available(promo_code, at=event_time)
+            await _ensure_first_purchase_only(session, promo_code=promo_code, user_id=user_id)
             return _build_discount_quote(
                 redemption=redemption,
                 promo_code=promo_code,
@@ -302,6 +396,7 @@ async def get_discount_quote_for_redemption(
         raise PromoCodeError("Промокод больше недоступен.")
 
     _ensure_promo_is_available(promo_code, at=event_time)
+    await _ensure_first_purchase_only(session, promo_code=promo_code, user_id=user_id)
     return _build_discount_quote(
         redemption=redemption,
         promo_code=promo_code,
@@ -328,6 +423,50 @@ async def consume_discount_redemption(
     )
 
 
+def _parse_optional_datetime(raw_value: str | None, *, label: str) -> datetime | None:
+    if raw_value is None or raw_value.strip() in {"", "-"}:
+        return None
+    normalized = raw_value.strip().replace("Z", "+00:00")
+    try:
+        return ensure_aware_utc(datetime.fromisoformat(normalized))
+    except ValueError as exc:
+        raise PromoCodeError(f"{label} должен быть ISO datetime или '-'.") from exc
+
+
+def _parse_optional_bool(raw_value: str | None, *, label: str, default: bool) -> bool:
+    if raw_value is None or raw_value.strip() in {"", "-"}:
+        return default
+    normalized = raw_value.strip().lower()
+    if normalized in _TRUE_VALUES:
+        return True
+    if normalized in _FALSE_VALUES:
+        return False
+    raise PromoCodeError(f"{label} должен быть 1/0, true/false или '-'.")
+
+
+def _parse_optional_positive_int(raw_value: str | None, *, label: str) -> int | None:
+    if raw_value is None or raw_value.strip() in {"", "-"}:
+        return None
+    try:
+        parsed = int(raw_value)
+    except ValueError as exc:
+        raise PromoCodeError(f"{label} должен быть целым числом или '-'.") from exc
+    if parsed <= 0:
+        raise PromoCodeError(f"{label} должен быть больше нуля.")
+    return parsed
+
+
+def _normalize_optional_text(raw_value: str | None, *, max_length: int) -> str | None:
+    if raw_value is None:
+        return None
+    text = raw_value.strip()
+    if text in {"", "-"}:
+        return None
+    normalized = text.replace("_", " ")
+    if len(normalized) > max_length:
+        raise PromoCodeError(f"Текстовое поле слишком длинное: максимум {max_length} символов.")
+    return normalized
+
 
 def _validate_promo_value(draft: PromoDraft, *, tariff: Tariff | None) -> None:
     if draft.promo_type == PROMO_TYPE_FREE_DAYS and draft.tariff_id is None:
@@ -346,11 +485,13 @@ def _validate_promo_value(draft: PromoDraft, *, tariff: Tariff | None) -> None:
         )
 
 
-
 def _ensure_promo_is_available(promo_code: PromoCode, *, at: datetime) -> None:
     if not promo_code.is_active:
         raise PromoCodeError("Промокод отключён.")
-    if promo_code.expires_at is not None and promo_code.expires_at <= at:
+    if promo_code.valid_from is not None and ensure_aware_utc(promo_code.valid_from) > at:
+        raise PromoCodeError("Этот промокод ещё не активен.")
+    valid_until = effective_promo_valid_until(promo_code)
+    if valid_until is not None and ensure_aware_utc(valid_until) <= at:
         raise PromoCodeError("Срок действия промокода истёк.")
 
 
@@ -360,31 +501,19 @@ async def _grant_free_days_promo(
     redemptions: PromoRedemptionRepository,
     promo_code: PromoCode,
     user_id: int,
-    existing: PromoRedemption | None,
     at: datetime,
 ) -> PromoApplyResult:
     if promo_code.tariff is None:
         raise PromoCodeError("Для free_days не найден привязанный тариф.")
 
-    if existing is None:
-        await _ensure_usage_available(redemptions, promo_code=promo_code)
-        redemption = await redemptions.create(
-            promo_code_id=promo_code.id,
-            user_id=user_id,
-            status="consumed",
-            applied_tariff_id=promo_code.tariff.id,
-            used_at=at,
-        )
-    else:
-        await _ensure_usage_available(redemptions, promo_code=promo_code)
-        redemption = await redemptions.mark_consumed(
-            existing,
-            payment_id=None,
-            applied_tariff_id=promo_code.tariff.id,
-            amount_before=None,
-            amount_after=None,
-            used_at=at,
-        )
+    await _ensure_usage_available(redemptions, promo_code=promo_code)
+    redemption = await redemptions.create(
+        promo_code_id=promo_code.id,
+        user_id=user_id,
+        status="consumed",
+        applied_tariff_id=promo_code.tariff.id,
+        used_at=at,
+    )
 
     subscription_change = await activate_or_extend_subscription(
         session,
@@ -408,28 +537,14 @@ async def _activate_discount_promo(
     redemptions: PromoRedemptionRepository,
     promo_code: PromoCode,
     user_id: int,
-    existing: PromoRedemption | None,
 ) -> PromoApplyResult:
-    if existing is not None and existing.status == "pending":
-        await redemptions.cancel_other_pending_for_user(
-            user_id=user_id,
-            exclude_redemption_id=existing.id,
-        )
-        return PromoApplyResult(
-            promo_code=promo_code,
-            redemption=existing,
-            action="pending_discount",
-        )
-
+    await _ensure_first_purchase_only(session, promo_code=promo_code, user_id=user_id)
     await _ensure_usage_available(redemptions, promo_code=promo_code)
-    if existing is None:
-        redemption = await redemptions.create(
-            promo_code_id=promo_code.id,
-            user_id=user_id,
-            status="pending",
-        )
-    else:
-        redemption = await redemptions.activate_pending(existing)
+    redemption = await redemptions.create(
+        promo_code_id=promo_code.id,
+        user_id=user_id,
+        status="pending",
+    )
     await redemptions.cancel_other_pending_for_user(
         user_id=user_id,
         exclude_redemption_id=redemption.id,
@@ -453,6 +568,45 @@ async def _ensure_usage_available(
     if reserved_or_consumed >= promo_code.max_uses:
         raise PromoCodeError("Лимит использований промокода исчерпан.")
 
+
+async def _ensure_user_usage_available(
+    session: AsyncSession,
+    *,
+    redemptions: PromoRedemptionRepository,
+    promo_code: PromoCode,
+    user_id: int,
+) -> None:
+    await _ensure_first_purchase_only(session, promo_code=promo_code, user_id=user_id)
+    used_count = await redemptions.count_for_user_and_promo_by_statuses(
+        promo_code.id,
+        user_id,
+        ("pending", "consumed"),
+    )
+    per_user_limit = effective_promo_per_user_limit(promo_code)
+    if used_count >= per_user_limit:
+        if per_user_limit == 1:
+            raise PromoCodeError("Этот промокод уже использован вами.")
+        raise PromoCodeError(
+            f"Персональный лимит этого промокода исчерпан ({per_user_limit})."
+        )
+
+
+async def _ensure_first_purchase_only(
+    session: AsyncSession,
+    *,
+    promo_code: PromoCode,
+    user_id: int,
+) -> None:
+    if not promo_code.first_purchase_only:
+        return
+    result = await session.execute(
+        select(Payment.id)
+        .where(Payment.user_id == user_id)
+        .where(or_(Payment.paid_at.is_not(None), Payment.status == "paid"))
+        .limit(1)
+    )
+    if result.scalar_one_or_none() is not None:
+        raise PromoCodeError("Этот промокод доступен только до первой успешной оплаты.")
 
 
 def _build_discount_quote(
@@ -490,7 +644,6 @@ def _build_discount_quote(
             final_amount=final_amount,
         ),
     )
-
 
 
 def _calculate_discounted_amount(*, promo_code: PromoCode, original_amount: int) -> int:

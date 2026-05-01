@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+﻿# ruff: noqa: E501
 from __future__ import annotations
 
 from html import escape
@@ -14,6 +14,7 @@ from app.bot.keyboards.admin_texts import admin_text_detail_keyboard, admin_text
 from app.bot.routers.common import edit_or_answer
 from app.bot.states.admin import AdminTextEditor
 from app.db.repositories.users import UserRepository
+from app.services.admin_roles import PERMISSION_TEXTS
 from app.services.texts import (
     TextTemplateValidationError,
     default_text_template,
@@ -25,8 +26,8 @@ from app.services.texts import (
 )
 
 router = Router(name="admin_texts")
-router.message.filter(AdminFilter())
-router.callback_query.filter(AdminFilter())
+router.message.filter(AdminFilter(PERMISSION_TEXTS))
+router.callback_query.filter(AdminFilter(PERMISSION_TEXTS))
 
 
 
@@ -211,3 +212,4 @@ async def receive_text_value(
         "\u0428\u0430\u0431\u043b\u043e\u043d \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d.\n\n" + _render_text_detail(template),
         reply_markup=admin_text_detail_keyboard(template.key),
     )
+

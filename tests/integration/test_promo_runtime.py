@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.routers.admin.promos import (
     admin_promo_create,
     admin_promo_disable,
+    admin_promo_list,
     admin_promo_stats,
+    admin_promo_view,
 )
 from app.bot.routers.user.payments import buy_tariff, successful_payment_handler
 from app.bot.routers.user.promos import promo_command
@@ -191,7 +193,7 @@ async def test_promo_command_grants_free_days_without_fake_payment(
     assert any(log.action == "promo_applied_free_days" for log in audits)
 
 
-async def test_discount_promo_changes_invoice_amount_and_is_consumed_after_payment(
+async def test_discount_promo_changes_invoice_amount_and_shows_preview(
     session: AsyncSession,
     settings: Settings,
 ) -> None:
@@ -204,6 +206,7 @@ async def test_discount_promo_changes_invoice_amount_and_is_consumed_after_payme
             max_uses=5,
             tariff_id=tariff.id,
             is_active=True,
+            campaign_name="Spring Sale",
         )
     )
     await session.commit()
@@ -211,6 +214,11 @@ async def test_discount_promo_changes_invoice_amount_and_is_consumed_after_payme
     bot = FakeBot()
     promo_message = DummyMessage("/promo SAVE50", user_id=user.telegram_id)
     await promo_command(promo_message, session, settings, bot)
+
+    assert promo_message.answer_calls
+    preview_text = promo_message.answer_calls[-1][0]
+    assert "К оплате будет: 200 Stars вместо 250 Stars" in preview_text
+    assert "Кампания: Spring Sale" in preview_text
 
     callback = DummyCallback(f"menu:user:buy:{tariff.id}", user_id=user.telegram_id)
     await buy_tariff(callback, session)
@@ -246,7 +254,7 @@ async def test_discount_promo_changes_invoice_amount_and_is_consumed_after_payme
     assert any(log.action == "payment_paid_stars" for log in audits)
 
 
-async def test_admin_promo_commands_create_disable_and_show_stats(
+async def test_admin_promo_commands_support_view_list_search_and_disable(
     session: AsyncSession,
     settings: Settings,
 ) -> None:
@@ -272,12 +280,32 @@ async def test_admin_promo_commands_create_disable_and_show_stats(
     await session.commit()
 
     create_message = DummyMessage(
-        f"/admin_promo_create ADMIN20 discount_percent 20 3 {tariff.id} 5",
+        (
+            f"/admin_promo_create ADMIN20 discount_percent 20 3 {tariff.id} - "
+            "from=2026-05-01T10:00:00+00:00 until=2026-05-10T10:00:00+00:00 "
+            "first=1 per_user=2 campaign=Spring_Sale notes=welcome_offer"
+        ),
         user_id=755815181,
         first_name="Admin",
     )
     create_message.from_user.username = "admin"
     await admin_promo_create(create_message, session, settings)
+
+    view_message = DummyMessage(
+        "/admin_promo_view ADMIN20",
+        user_id=755815181,
+        first_name="Admin",
+    )
+    view_message.from_user.username = "admin"
+    await admin_promo_view(view_message, session, settings)
+
+    list_message = DummyMessage(
+        "/admin_promo_list spring",
+        user_id=755815181,
+        first_name="Admin",
+    )
+    list_message.from_user.username = "admin"
+    await admin_promo_list(list_message, session, settings)
 
     stats_message = DummyMessage(
         "/admin_promo_stats ADMIN20",
@@ -301,10 +329,47 @@ async def test_admin_promo_commands_create_disable_and_show_stats(
 
     assert create_message.answer_calls
     assert "Промокод создан" in create_message.answer_calls[0][0]
+    assert "Лимит на пользователя: 2" in create_message.answer_calls[0][0]
+    assert view_message.answer_calls
+    assert "Карточка промокода" in view_message.answer_calls[0][0]
+    assert "Кампания: Spring Sale" in view_message.answer_calls[0][0]
+    assert list_message.answer_calls
+    assert "ADMIN20" in list_message.answer_calls[0][0]
+    assert "spring" in list_message.answer_calls[0][0].lower()
     assert stats_message.answer_calls
     assert "Статистика промокода" in stats_message.answer_calls[0][0]
     assert disable_message.answer_calls
     assert "отключён" in disable_message.answer_calls[0][0]
     assert promo.is_active is False
+    assert promo.first_purchase_only is True
+    assert promo.per_user_limit == 2
+    assert promo.campaign_name == "Spring Sale"
+    assert promo.notes == "welcome offer"
     assert any(log.action == "promo_created" for log in audits)
     assert any(log.action == "promo_disabled" for log in audits)
+
+
+async def test_promo_command_reports_not_yet_active(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    user, tariff = await _seed_tariff(session)
+    session.add(
+        PromoCode(
+            code="FUTURE20",
+            promo_type="discount_percent",
+            value=20,
+            max_uses=3,
+            tariff_id=tariff.id,
+            is_active=True,
+            valid_from=datetime(2026, 5, 2, 12, 0, tzinfo=UTC),
+        )
+    )
+    await session.commit()
+
+    bot = FakeBot()
+    message = DummyMessage("/promo FUTURE20", user_id=user.telegram_id)
+    await promo_command(message, session, settings, bot)
+
+    assert message.answer_calls
+    assert "ещё не активен" in message.answer_calls[-1][0]

@@ -112,7 +112,7 @@ async def test_stage9_default_templates_seed_and_render_clean(
     keys = {template.key for template in templates}
 
     assert created == len(DEFAULT_TEXT_TEMPLATES)
-    assert {"start", "profile", "tariffs", "payment_success", "support"}.issubset(keys)
+    assert {"start", "profile", "tariffs", "payment_success", "support", "payment_support", "terms", "privacy", "refund_policy"}.issubset(keys)
     assert all(not has_mojibake(template.title) for template in templates)
     assert all(not has_mojibake(template.body) for template in templates)
 
@@ -147,25 +147,25 @@ async def test_admin_text_editor_updates_and_resets_template(
     await session.commit()
 
     state = FakeState()
-    callback = DummyCallback("menu:admin:texts:edit:support")
+    callback = DummyCallback("menu:admin:texts:edit:terms")
     await start_text_edit(callback, session, state)
 
     assert state.state_name == AdminTextEditor.waiting_for_value
 
-    message = DummyMessage(text="\u041d\u043e\u0432\u0430\u044f \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0434\u043b\u044f {first_name}")
+    message = DummyMessage(text="\u041d\u043e\u0432\u044b\u0435 \u0443\u0441\u043b\u043e\u0432\u0438\u044f \u0434\u043b\u044f {first_name}")
     await receive_text_value(message, state, session)
 
-    updated = await session.scalar(select(TextTemplate).where(TextTemplate.key == "support"))
+    updated = await session.scalar(select(TextTemplate).where(TextTemplate.key == "terms"))
     assert updated is not None
-    assert updated.body == "\u041d\u043e\u0432\u0430\u044f \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 \u0434\u043b\u044f {first_name}"
+    assert updated.body == "\u041d\u043e\u0432\u044b\u0435 \u0443\u0441\u043b\u043e\u0432\u0438\u044f \u0434\u043b\u044f {first_name}"
     assert "\u0428\u0430\u0431\u043b\u043e\u043d \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d" in message.answer_calls[0][0]
 
-    reset_callback = DummyCallback("menu:admin:texts:reset:support")
+    reset_callback = DummyCallback("menu:admin:texts:reset:terms")
     await reset_text(reset_callback, session)
 
-    reset_template = await session.scalar(select(TextTemplate).where(TextTemplate.key == "support"))
+    reset_template = await session.scalar(select(TextTemplate).where(TextTemplate.key == "terms"))
     assert reset_template is not None
-    assert reset_template.body == DEFAULT_TEXT_TEMPLATES["support"].body
+    assert reset_template.body == DEFAULT_TEXT_TEMPLATES["terms"].body
 
 
 async def test_admin_text_editor_rejects_mojibake_input(

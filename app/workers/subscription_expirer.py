@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Subscription
 from app.db.repositories.subscriptions import SubscriptionRepository
 from app.services.audit import write_audit_log
+from app.services.observability import EVENT_SUBSCRIPTION_REVOKED
 from app.services.texts import render_text
 from app.utils.datetime import ensure_aware_utc, format_datetime, utcnow
 
@@ -246,6 +247,18 @@ async def process_expired_subscriptions(
                 if subscription.grace_revoke_after is not None
                 else None,
                 "revoked_at": processed_at.isoformat(),
+            },
+        )
+        logger.info(
+            "Revoked subscription %s for user %s.",
+            subscription.id,
+            subscription.user_id,
+            extra={
+                "event_name": EVENT_SUBSCRIPTION_REVOKED,
+                "user_id": subscription.user_id,
+                "subscription_id": subscription.id,
+                "tariff_id": subscription.tariff_id,
+                "channel_id": subscription.channel_id,
             },
         )
 

@@ -9,6 +9,13 @@ import pytest
 
 from app.config import get_settings
 
+TESTS_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = TESTS_ROOT.parent
+TMP_ROOT = REPO_ROOT / ".tmp" / "pytest-temp"
+TMP_ROOT.mkdir(parents=True, exist_ok=True)
+os.environ["TMP"] = str(TMP_ROOT)
+os.environ["TEMP"] = str(TMP_ROOT)
+os.environ["TMPDIR"] = str(TMP_ROOT)
 
 def _preload_ssl_dlls() -> None:
     try:

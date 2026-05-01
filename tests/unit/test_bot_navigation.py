@@ -135,8 +135,17 @@ async def test_help_section_navigation_edits_banner_in_place() -> None:
     assert callback.message.photo_calls == []
     assert len(callback.message.media_calls) == 1
     media, markup = callback.message.media_calls[0]
-    assert "Помощь" in media.caption
-    assert _flatten_button_texts(markup) == ["⬅️ Назад", "🏠 Главное меню"]
+    assert "Поддержка" in media.caption
+    assert _flatten_button_texts(markup) == [
+        "🎫 Создать обращение",
+        "📨 Мои обращения",
+        "💳 Помощь с оплатой",
+        "📄 Условия",
+        "🔒 Конфиденциальность",
+        "↩️ Возвраты",
+        "⬅️ Назад",
+        "🏠 Главное меню",
+    ]
     assert callback.answer_count == 1
 
 
@@ -194,7 +203,9 @@ def test_admin_main_menu_keyboard_has_expected_buttons() -> None:
     assert _flatten_button_texts(admin_main_menu_keyboard()) == [
         "📊 Аналитика",
         "👥 Пользователи",
+        "🎫 Поддержка",
         "💳 Платежи",
+        "📜 Аудит",
         "🧾 Тарифы",
         "📣 Каналы",
         "✍️ Тексты",

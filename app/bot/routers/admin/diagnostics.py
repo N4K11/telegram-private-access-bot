@@ -9,14 +9,15 @@ from app.bot.filters.admin import AdminFilter
 from app.bot.keyboards.admin import admin_section_keyboard
 from app.bot.routers.common import edit_or_answer
 from app.db.repositories.channels import ChannelRepository
+from app.services.admin_roles import PERMISSION_DIAGNOSTICS
 from app.services.channel_diagnostics import (
     build_channel_diagnostics_report,
     render_channel_diagnostics_report,
 )
 
 router = Router(name="admin_diagnostics")
-router.message.filter(AdminFilter())
-router.callback_query.filter(AdminFilter())
+router.message.filter(AdminFilter(PERMISSION_DIAGNOSTICS))
+router.callback_query.filter(AdminFilter(PERMISSION_DIAGNOSTICS))
 
 
 @router.message(Command("admin_channel_check"))
@@ -38,3 +39,5 @@ async def diagnostics_dashboard(callback: CallbackQuery, session: AsyncSession, 
         text=render_channel_diagnostics_report(report),
         reply_markup=admin_section_keyboard(),
     )
+
+

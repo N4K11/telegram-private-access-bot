@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from aiogram import Bot, Router
 from aiogram.filters import Command
@@ -14,9 +15,11 @@ from app.services.invites import InviteLinkError, issue_subscription_invite_link
 from app.services.promo_service import (
     PROMO_TYPE_DISCOUNT_PERCENT,
     PROMO_TYPE_DISCOUNT_STARS,
+    PROMO_TYPE_FIXED_PRICE,
     PromoApplyResult,
     PromoCodeError,
     apply_promo_code,
+    effective_promo_valid_until,
 )
 from app.utils.datetime import format_datetime
 from app.utils.encoding import safe_ui_text
@@ -76,6 +79,7 @@ async def promo_command(
                 "max_uses": result.promo_code.max_uses,
                 "tariff_id": result.promo_code.tariff_id,
                 "redemption_id": result.redemption.id,
+                "campaign_name": result.promo_code.campaign_name,
             },
         )
         await session.commit()
@@ -90,7 +94,7 @@ async def promo_command(
         return
 
     if result.action == "pending_discount":
-        await message.answer(_render_pending_discount_text(result))
+        await message.answer(_render_pending_discount_text(result, timezone=settings.timezone))
         return
 
     invite_link: str | None = None
@@ -130,7 +134,6 @@ async def promo_command(
     )
 
 
-
 def _extract_command_arg(text: str | None) -> str:
     if not text:
         return ""
@@ -140,8 +143,7 @@ def _extract_command_arg(text: str | None) -> str:
     return parts[1].strip()
 
 
-
-def _render_pending_discount_text(result: PromoApplyResult) -> str:
+def _render_pending_discount_text(result: PromoApplyResult, *, timezone: str) -> str:
     promo_code = result.promo_code
     if promo_code.promo_type == PROMO_TYPE_DISCOUNT_PERCENT:
         discount_text = f"-{promo_code.value}%"
@@ -150,20 +152,51 @@ def _render_pending_discount_text(result: PromoApplyResult) -> str:
     else:
         discount_text = f"фиксированная цена {promo_code.value} Stars"
 
-    scope_text = ""
+    lines = [
+        f"🎟 Промокод {promo_code.code} активирован.",
+        "",
+        f"Скидка: {discount_text}",
+    ]
+
+    if promo_code.campaign_name:
+        campaign_label = safe_ui_text(
+            promo_code.campaign_name,
+            promo_code.campaign_name,
+        )
+        lines.append(f"Кампания: {campaign_label}")
+
     if promo_code.tariff is not None:
         tariff_label = safe_ui_text(
             promo_code.tariff.name,
             f"Тариф #{promo_code.tariff.id}",
         )
-        scope_text = f"\nТариф: {tariff_label}"
+        lines.append(f"Тариф: {tariff_label}")
+        preview_price = _preview_tariff_price(
+            promo_code,
+            original_amount=promo_code.tariff.price_stars,
+        )
+        lines.append(
+            f"К оплате будет: {preview_price} Stars вместо {promo_code.tariff.price_stars} Stars"
+        )
+    else:
+        lines.append("Скидка будет показана при выборе подходящего тарифа.")
 
-    return (
-        f"🎟 Промокод {promo_code.code} активирован.\n\n"
-        f"Скидка: {discount_text}{scope_text}\n"
-        "Он будет применён к следующей оплате через Telegram Stars."
-    )
+    valid_until = effective_promo_valid_until(promo_code)
+    if valid_until is not None:
+        lines.append(f"Активен до: {format_datetime(valid_until, timezone)}")
 
+    lines.extend(["", "Он будет применён к следующей оплате через Telegram Stars."])
+    return "\n".join(lines)
+
+
+def _preview_tariff_price(promo_code, *, original_amount: int) -> int:
+    if promo_code.promo_type == PROMO_TYPE_DISCOUNT_PERCENT:
+        return (original_amount * (100 - promo_code.value)) // 100
+    if promo_code.promo_type == PROMO_TYPE_DISCOUNT_STARS:
+        return original_amount - promo_code.value
+    if promo_code.promo_type == PROMO_TYPE_FIXED_PRICE:
+        return promo_code.value
+    return original_amount
 
 
 def _render_free_days_success_text(
@@ -171,7 +204,7 @@ def _render_free_days_success_text(
     *,
     timezone: str,
     invite_link: str | None,
-    invite_expires_at,
+    invite_expires_at: datetime | None,
     invite_error: str | None,
 ) -> str:
     assert result.subscription_change is not None

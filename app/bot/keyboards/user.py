@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 USER_BUTTON_BUY_TEXT = "💎 Купить доступ"
 USER_BUTTON_TARIFFS_TEXT = "📦 Тарифы"
 USER_BUTTON_PROFILE_TEXT = "👤 Мой профиль"
+USER_BUTTON_HISTORY_TEXT = "📜 История платежей"
+USER_BUTTON_REFERRALS_TEXT = "🎁 Рефералы"
 USER_BUTTON_LINK_TEXT = "🔗 Получить ссылку"
 USER_BUTTON_HELP_TEXT = "❓ Помощь"
 USER_BUTTON_ADMIN_TEXT = "🛠 Админ-панель"
@@ -42,6 +44,13 @@ def _safe_tariff_name(tariff: Tariff) -> str:
 
 def _safe_channel_title(subscription: Subscription) -> str:
     return _safe_button_text(subscription.channel.title, f"Канал #{subscription.channel_id}")
+
+
+def _safe_tariff_badge(tariff: Tariff) -> str | None:
+    badge = (getattr(tariff, "badge", None) or "").strip()
+    if not badge:
+        return None
+    return _safe_button_text(badge, "") or None
 
 
 def _safe_tariff_icon(index: int) -> str:
@@ -96,11 +105,28 @@ def user_profile_keyboard(*, has_active_subscription: bool) -> InlineKeyboardMar
     if has_active_subscription:
         builder.button(text=USER_BUTTON_LINK_TEXT, callback_data="menu:user:link")
         builder.button(text="💎 Продлить доступ", callback_data="menu:user:buy")
+        builder.button(text=USER_BUTTON_HISTORY_TEXT, callback_data="menu:user:payment-history")
+        builder.button(text=USER_BUTTON_REFERRALS_TEXT, callback_data="menu:user:referrals")
+        builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")
+        builder.adjust(2, 2, 1)
     else:
         builder.button(text=USER_BUTTON_BUY_TEXT, callback_data="menu:user:buy")
-    builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")
-    builder.adjust(1)
+        builder.button(text=USER_BUTTON_HISTORY_TEXT, callback_data="menu:user:payment-history")
+        builder.button(text=USER_BUTTON_REFERRALS_TEXT, callback_data="menu:user:referrals")
+        builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")
+        builder.adjust(2, 1, 1)
     return builder.as_markup()
+
+
+def user_payment_history_keyboard() -> InlineKeyboardMarkup:
+    return build_navigation_keyboard(
+        include_back=True,
+        include_home=True,
+        back_callback="menu:user:profile",
+        home_callback="menu:user:home",
+        back_text=USER_BACK_TEXT,
+        home_text=USER_HOME_TEXT,
+    )
 
 
 def user_subscription_keyboard(subscriptions: Sequence[Subscription]) -> InlineKeyboardMarkup:
@@ -132,12 +158,20 @@ def user_tariffs_keyboard(
 
     for index, tariff in enumerate(tariffs):
         title = _safe_tariff_name(tariff)
+        badge = _safe_tariff_badge(tariff)
+        prefix = f"[{badge}] " if badge else ""
+        if getattr(tariff, "is_lifetime", False):
+            duration_label = "Навсегда"
+        else:
+            duration_label = f"{tariff.duration_days} дн."
+        if getattr(tariff, "is_trial", False) and duration_label != "Навсегда":
+            duration_label += " trial"
         icon = _safe_tariff_icon(index)
         if mode == "browse":
-            text = f"{icon} {title} — {tariff.duration_days} дн. / {tariff.price_stars}⭐"
+            text = f"{icon} {prefix}{title} — {duration_label} / {tariff.price_stars}⭐"
             callback_data = f"menu:user:tariff:{tariff.id}"
         else:
-            text = f"{icon} Купить: {title} — {tariff.price_stars}⭐"
+            text = f"{icon} Купить: {prefix}{title} — {tariff.price_stars}⭐"
             callback_data = f"menu:user:buy:stars:{tariff.id}"
         builder.button(text=text, callback_data=callback_data)
     builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")

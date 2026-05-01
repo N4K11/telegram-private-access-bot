@@ -21,6 +21,20 @@ class PaymentRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_provider_charge_id(
+        self,
+        *,
+        provider: str,
+        provider_payment_charge_id: str,
+    ) -> Payment | None:
+        result = await self._session.execute(
+            select(Payment)
+            .options(selectinload(Payment.tariff).selectinload(Tariff.channel))
+            .where(Payment.provider == provider)
+            .where(Payment.provider_payment_charge_id == provider_payment_charge_id)
+        )
+        return result.scalar_one_or_none()
+
     async def list_paid_for_user(self, user_id: int, *, limit: int = 10) -> list[Payment]:
         result = await self._session.execute(
             select(Payment)

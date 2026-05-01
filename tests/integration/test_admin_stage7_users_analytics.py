@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -90,7 +90,7 @@ class RecordingBot:
         return True
 
 
-ANALYTICS_TEXT = "Аналитика"
+ANALYTICS_TEXT = "\u0410\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0430"
 USERS_TEXT = "Пользователи"
 FILTER_ALL_TEXT = "Фильтр: Все"
 FILTER_ACTIVE_TEXT = "Фильтр: Активные"
@@ -345,7 +345,7 @@ async def test_block_flow_requires_confirmation(session: AsyncSession) -> None:
     settings = Settings.model_validate({"bot_token": "123:token", "admin_ids": [755815181]})
 
     review_callback = DummyCallback(f"menu:admin:users:block:{user.id}:all:1")
-    await review_block_toggle(review_callback, session)
+    await review_block_toggle(review_callback, session, settings)
 
     unchanged = await session.get(User, user.id)
     assert unchanged is not None
@@ -379,7 +379,7 @@ async def test_manual_grant_requires_confirmation(session: AsyncSession) -> None
     review_callback = DummyCallback(
         f"menu:admin:users:grant-review:{user.id}:{tariff.id}:all:1"
     )
-    await review_manual_grant(review_callback, session)
+    await review_manual_grant(review_callback, session, settings)
 
     subscriptions_before = list(
         (
@@ -427,7 +427,7 @@ async def test_admin_can_send_direct_message(session: AsyncSession) -> None:
     )
 
     start_callback = DummyCallback(f"menu:admin:users:message:{user.id}:all:1")
-    await start_direct_message(start_callback, session, state)
+    await start_direct_message(start_callback, session, state, settings)
     assert state.state_name is not None
 
     message = DummyMessage(text="Тестовое сообщение")
@@ -460,3 +460,4 @@ async def test_users_index_shows_directory(session: AsyncSession) -> None:
     assert USERS_TEXT in text
     assert FILTER_ALL_TEXT in text
     assert TARIFF_FILTER_BUTTON in _flatten_button_texts(markup)
+

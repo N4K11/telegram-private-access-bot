@@ -3,64 +3,114 @@
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.assets import get_banner_path
 from app.bot.filters.admin import AdminFilter
 from app.bot.keyboards.admin import admin_main_menu_keyboard, admin_section_keyboard
 from app.bot.rendering import render_section
 from app.bot.routers.common import edit_or_answer
+from app.config import Settings
+from app.services.admin_roles import (
+    allowed_admin_menu_sections,
+    get_admin_section_title,
+    resolve_telegram_role,
+)
 from app.services.texts import render_text
 
 router = Router(name="admin")
 router.message.filter(AdminFilter())
 router.callback_query.filter(AdminFilter())
 
-ADMIN_SECTION_LABELS = {
-    "analytics": "Аналитика",
-    "users": "Пользователи",
-    "payments": "Платежи",
-    "tariffs": "Тарифы",
-    "channels": "Каналы",
-    "texts": "Тексты",
-    "broadcasts": "Рассылка",
-    "backups": "Бэкапы",
-    "settings": "Настройки",
-    "diagnostics": "Диагностика",
-}
+
+async def _resolve_admin_role(
+    session: AsyncSession | None,
+    settings: Settings | None,
+    telegram_user_id: int | None,
+) -> str:
+    if settings is None:
+        return "owner"
+    if session is not None and telegram_user_id is not None:
+        return await resolve_telegram_role(
+            session,
+            telegram_user_id=telegram_user_id,
+            settings=settings,
+        )
+    if telegram_user_id is not None and telegram_user_id in settings.admin_ids_set:
+        return "owner"
+    return "user"
+
+
+async def _render_admin_home(
+    target: Message | CallbackQuery,
+    *,
+    session: AsyncSession | None,
+    settings: Settings | None,
+    telegram_user_id: int | None,
+) -> None:
+    role = await _resolve_admin_role(session, settings, telegram_user_id)
+    await render_section(
+        target,
+        text=render_text("admin_dashboard"),
+        reply_markup=admin_main_menu_keyboard(role=role),
+        banner_path=get_banner_path("admin"),
+    )
 
 
 @router.message(Command("admin"))
-async def admin_panel(message: Message) -> None:
-    await render_section(
+async def admin_panel(
+    message: Message,
+    session: AsyncSession | None = None,
+    settings: Settings | None = None,
+) -> None:
+    await _render_admin_home(
         message,
-        text=render_text("admin_dashboard"),
-        reply_markup=admin_main_menu_keyboard(),
-        banner_path=get_banner_path("admin"),
+        session=session,
+        settings=settings,
+        telegram_user_id=message.from_user.id if message.from_user else None,
     )
 
 
 @router.callback_query(F.data == "menu:admin:home")
-async def admin_home(callback: CallbackQuery) -> None:
-    await render_section(
+async def admin_home(
+    callback: CallbackQuery,
+    session: AsyncSession | None = None,
+    settings: Settings | None = None,
+) -> None:
+    await _render_admin_home(
         callback,
-        text=render_text("admin_dashboard"),
-        reply_markup=admin_main_menu_keyboard(),
-        banner_path=get_banner_path("admin"),
+        session=session,
+        settings=settings,
+        telegram_user_id=callback.from_user.id if callback.from_user else None,
     )
 
 
 @router.callback_query(F.data.startswith("menu:admin:"))
-async def admin_section(callback: CallbackQuery) -> None:
+async def admin_section(
+    callback: CallbackQuery,
+    session: AsyncSession | None = None,
+    settings: Settings | None = None,
+) -> None:
     if callback.data is None:
         await callback.answer()
         return
 
     section = callback.data.rsplit(":", 1)[-1]
     if section == "home":
-        await admin_home(callback)
+        await admin_home(callback, session=session, settings=settings)
         return
 
-    label = ADMIN_SECTION_LABELS.get(section)
+    role = await _resolve_admin_role(
+        session,
+        settings,
+        callback.from_user.id if callback.from_user else None,
+    )
+    allowed_keys = {item.key for item in allowed_admin_menu_sections(role)}
+    if section not in allowed_keys:
+        await callback.answer("Недостаточно прав для этого раздела.", show_alert=True)
+        return
+
+    label = get_admin_section_title(section)
     if label is None:
         await callback.answer()
         return

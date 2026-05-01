@@ -43,6 +43,9 @@ class CryptoInvoiceRepository:
         await self._session.flush()
         return invoice
 
+    async def get_by_id(self, invoice_id: int) -> CryptoInvoice | None:
+        return await self._session.get(CryptoInvoice, invoice_id)
+
     async def get_by_external_id(self, external_id: str) -> CryptoInvoice | None:
         result = await self._session.execute(
             select(CryptoInvoice).where(CryptoInvoice.external_id == external_id)
@@ -61,10 +64,7 @@ class CryptoInvoiceRepository:
             .where(CryptoInvoice.user_id == user_id)
             .where(CryptoInvoice.tariff_id == tariff_id)
             .where(CryptoInvoice.status == "active")
-            .where(
-                CryptoInvoice.expires_at.is_(None)
-                | (CryptoInvoice.expires_at > at_time)
-            )
+            .where(CryptoInvoice.expires_at.is_(None) | (CryptoInvoice.expires_at > at_time))
             .order_by(CryptoInvoice.created_at.desc(), CryptoInvoice.id.desc())
             .limit(1)
         )
@@ -79,11 +79,25 @@ class CryptoInvoiceRepository:
         result = await self._session.execute(
             select(CryptoInvoice)
             .where(CryptoInvoice.status == "active")
-            .where(
-                CryptoInvoice.expires_at.is_(None)
-                | (CryptoInvoice.expires_at >= at_time)
-            )
+            .where(CryptoInvoice.expires_at.is_(None) | (CryptoInvoice.expires_at >= at_time))
             .order_by(CryptoInvoice.created_at.asc(), CryptoInvoice.id.asc())
+            .limit(limit)
+        )
+        return list(result.scalars())
+
+    async def list_recent(self, *, limit: int = 10) -> list[CryptoInvoice]:
+        result = await self._session.execute(
+            select(CryptoInvoice)
+            .order_by(CryptoInvoice.created_at.desc(), CryptoInvoice.id.desc())
+            .limit(limit)
+        )
+        return list(result.scalars())
+
+    async def list_for_user(self, user_id: int, *, limit: int = 10) -> list[CryptoInvoice]:
+        result = await self._session.execute(
+            select(CryptoInvoice)
+            .where(CryptoInvoice.user_id == user_id)
+            .order_by(CryptoInvoice.created_at.desc(), CryptoInvoice.id.desc())
             .limit(limit)
         )
         return list(result.scalars())

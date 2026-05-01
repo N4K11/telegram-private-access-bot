@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -27,6 +27,28 @@ class PromoCodeRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_recent(
+        self,
+        *,
+        search: str | None = None,
+        limit: int = 20,
+    ) -> list[PromoCode]:
+        statement = select(PromoCode).options(selectinload(PromoCode.tariff))
+        if search:
+            normalized = f"%{search.upper()}%"
+            statement = statement.where(
+                or_(
+                    PromoCode.code.ilike(normalized),
+                    PromoCode.campaign_name.ilike(normalized),
+                )
+            )
+        statement = statement.order_by(
+            PromoCode.created_at.desc(),
+            PromoCode.id.desc(),
+        ).limit(limit)
+        result = await self._session.execute(statement)
+        return list(result.scalars())
+
     async def create(
         self,
         *,
@@ -35,7 +57,13 @@ class PromoCodeRepository:
         value: int,
         max_uses: int,
         tariff_id: int | None,
+        valid_from,
+        valid_until,
         expires_at,
+        first_purchase_only: bool,
+        per_user_limit: int | None,
+        campaign_name: str | None,
+        notes: str | None,
         is_active: bool,
         created_by_user_id: int | None,
     ) -> PromoCode:
@@ -45,7 +73,13 @@ class PromoCodeRepository:
             value=value,
             max_uses=max_uses,
             tariff_id=tariff_id,
+            valid_from=valid_from,
+            valid_until=valid_until,
             expires_at=expires_at,
+            first_purchase_only=first_purchase_only,
+            per_user_limit=per_user_limit,
+            campaign_name=campaign_name,
+            notes=notes,
             is_active=is_active,
             created_by_user_id=created_by_user_id,
         )

@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import logging
@@ -18,6 +19,7 @@ from app.bot.routers.common import edit_or_answer
 from app.bot.states.admin import AdminChannelForm
 from app.db.models import Channel
 from app.db.repositories.channels import ChannelRepository
+from app.services.admin_roles import PERMISSION_CHANNELS
 from app.services.channels import (
     ChannelSnapshot,
     ChannelValidationError,
@@ -28,8 +30,8 @@ from app.services.channels import (
 logger = logging.getLogger(__name__)
 
 router = Router(name="admin_channels")
-router.message.filter(AdminFilter())
-router.callback_query.filter(AdminFilter())
+router.message.filter(AdminFilter(PERMISSION_CHANNELS))
+router.callback_query.filter(AdminFilter(PERMISSION_CHANNELS))
 
 
 def _callback_entity_id(data: str | None) -> int | None:
@@ -49,7 +51,7 @@ def _channel_reference(channel: Channel) -> str | int:
 
 
 def _permission_status(value: bool) -> str:
-    return "есть" if value else "нет"
+    return "РµСЃС‚СЊ" if value else "РЅРµС‚"
 
 
 def _render_channels_overview(channels: list[Channel]) -> str:
@@ -70,7 +72,7 @@ def _render_channels_overview(channels: list[Channel]) -> str:
     lines.append("")
     for channel in channels:
         status = "активен" if channel.is_active else "выключен"
-        lines.append(f"{'✅' if channel.is_active else '⏸'} {escape(channel.title)}")
+        lines.append(f"{'вњ…' if channel.is_active else 'вЏё'} {escape(channel.title)}")
         lines.append(f"Статус: {status}")
         lines.append(
             f"Права: invite {_permission_status(channel.invite_users_permission)}, "
@@ -353,3 +355,4 @@ async def receive_channel_title(
 
     await state.clear()
     await message.answer("Состояние формы не распознано. Откройте раздел каналов заново.")
+

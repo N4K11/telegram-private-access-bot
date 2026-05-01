@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import logging
@@ -84,6 +84,7 @@ async def process_broadcast_campaigns(
     sent_delta = 0
     failed_delta = 0
     blocked_delta = 0
+    rate_limited_delta = 0
 
     for item in deliveries:
         try:
@@ -92,6 +93,13 @@ async def process_broadcast_campaigns(
                 telegram_id=item.telegram_id,
                 text=campaign.content,
                 sleep_func=sleep_func,
+            )
+        except TelegramRetryAfter as exc:
+            rate_limited_delta += 1
+            failed_delta += 1
+            await delivery_repository.mark_rate_limited(
+                item.delivery,
+                error_message=f"retry_after:{float(exc.retry_after):g}",
             )
         except TelegramForbiddenError as exc:
             blocked_delta += 1
@@ -122,7 +130,7 @@ async def process_broadcast_campaigns(
     else:
         active_campaign = True
 
-    if sent_delta or failed_delta or blocked_delta:
+    if sent_delta or failed_delta or blocked_delta or rate_limited_delta:
         await write_audit_log(
             session,
             action="broadcast_batch_processed",
@@ -132,6 +140,7 @@ async def process_broadcast_campaigns(
                 "sent": sent_delta,
                 "failed": failed_delta,
                 "blocked": blocked_delta,
+                "rate_limited": rate_limited_delta,
                 "remaining": pending_count,
             },
         )
@@ -145,10 +154,7 @@ async def process_broadcast_campaigns(
 
 async def _notify_campaign_completed(session: AsyncSession, bot: Bot, campaign_id: int) -> None:
     snapshot = await get_broadcast_campaign_snapshot(session, campaign_id)
-    if snapshot is None:
-        return
-
-    if snapshot.campaign.created_by_user_id is None:
+    if snapshot is None or snapshot.campaign.created_by_user_id is None:
         return
 
     creator = await session.scalar(
@@ -157,7 +163,6 @@ async def _notify_campaign_completed(session: AsyncSession, bot: Bot, campaign_i
     if creator is None:
         return
 
-    remaining = snapshot.remaining_count
     text = "\n".join(
         [
             "Рассылка завершена.",
@@ -166,8 +171,10 @@ async def _notify_campaign_completed(session: AsyncSession, bot: Bot, campaign_i
             f"Фильтр: {snapshot.filter_label}",
             f"Отправлено: {snapshot.campaign.sent_count}",
             f"Ошибок: {snapshot.campaign.failed_count}",
+            f"Rate limited: {snapshot.rate_limited_count}",
             f"Заблокировали бота: {snapshot.blocked_count}",
-            f"Осталось: {remaining}",
+            f"Осталось: {snapshot.remaining_count}",
+            f"Завершена: {snapshot.campaign.finished_at or '—'}",
         ]
     )
     try:
@@ -178,3 +185,4 @@ async def _notify_campaign_completed(session: AsyncSession, bot: Bot, campaign_i
             creator.telegram_id,
             campaign_id,
         )
+

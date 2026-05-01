@@ -1,3 +1,4 @@
+# ruff: noqa: E501, I001
 from __future__ import annotations
 
 import json
@@ -10,6 +11,12 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters.admin import AdminFilter
+from app.services.admin_roles import (
+    PERMISSION_USERS_MANAGE,
+    PERMISSION_USERS_VIEW,
+    has_permission,
+    resolve_telegram_role,
+)
 from app.bot.keyboards.admin import admin_form_keyboard
 from app.bot.keyboards.admin_users import (
     admin_confirm_keyboard,
@@ -40,9 +47,33 @@ from app.utils.datetime import format_datetime, utcnow
 
 logger = logging.getLogger(__name__)
 
+
+async def _require_users_manage_access(
+    target: CallbackQuery | Message,
+    *,
+    session: AsyncSession,
+    settings: Settings,
+) -> bool:
+    telegram_user_id = getattr(getattr(target, "from_user", None), "id", None)
+    role = await resolve_telegram_role(
+        session,
+        telegram_user_id=telegram_user_id,
+        settings=settings,
+    )
+    if has_permission(role, PERMISSION_USERS_MANAGE):
+        return True
+
+    text = "Недостаточно прав для управления пользователями."
+    if isinstance(target, CallbackQuery):
+        await target.answer(text, show_alert=True)
+    else:
+        await target.answer(text)
+    return False
+
+
 router = Router(name="admin_users")
-router.message.filter(AdminFilter())
-router.callback_query.filter(AdminFilter())
+router.message.filter(AdminFilter(PERMISSION_USERS_VIEW))
+router.callback_query.filter(AdminFilter(PERMISSION_USERS_VIEW))
 
 
 
@@ -105,8 +136,6 @@ def _parse_user_tariff_context(data: str | None, action: str) -> tuple[int, int,
         return int(parts[4]), int(parts[5]), parts[6], int(parts[7])
     except ValueError:
         return None
-
-
 
 def _render_users_directory(page_data: UserDirectoryPage, *, timezone: str) -> str:
     lines = [
@@ -246,7 +275,6 @@ def _render_audit(snapshot: UserProfileSnapshot, *, timezone: str) -> str:
         if payload:
             lines.append(f"  {escape(payload)}")
     return "\n".join(lines)
-
 
 async def _show_directory(
     target: CallbackQuery | Message,
@@ -507,7 +535,11 @@ async def start_direct_message(
     callback: CallbackQuery,
     session: AsyncSession,
     state: FSMContext,
+    settings: Settings,
 ) -> None:
+    if not await _require_users_manage_access(callback, session=session, settings=settings):
+        return
+
     context = _parse_user_context(callback.data, "message")
     if context is None:
         await callback.answer()
@@ -526,7 +558,7 @@ async def start_direct_message(
         callback,
         text=(
             f"Личное сообщение пользователю {escape(_format_user_name(profile.user))}\n\n"
-            "Отправьте следующий текст одним сообщением."
+            "Р С›РЎвЂљР С—РЎР‚Р В°Р Р†РЎРЉРЎвЂљР Вµ РЎРѓР В»Р ВµР Т‘РЎС“РЎР‹РЎвЂ°Р С‘Р в„– РЎвЂљР ВµР С”РЎРѓРЎвЂљ Р С•Р Т‘Р Р…Р С‘Р С РЎРѓР С•Р С•Р В±РЎвЂ°Р ВµР Р…Р С‘Р ВµР С."
         ),
         reply_markup=admin_form_keyboard(
             back_callback=f"menu:admin:users:view:{user_id}:{filter_key}:{page}"
@@ -542,8 +574,12 @@ async def receive_direct_message(
     settings: Settings,
     bot: Bot,
 ) -> None:
+    if not await _require_users_manage_access(message, session=session, settings=settings):
+        await state.clear()
+        return
+
     if message.text is None or not message.text.strip():
-        await message.answer("Нужно отправить текстовое сообщение без пустого содержимого.")
+        await message.answer("Р СњРЎС“Р В¶Р Р…Р С• Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С‘РЎвЂљРЎРЉ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р Р†Р С•Р Вµ РЎРѓР С•Р С•Р В±РЎвЂ°Р ВµР Р…Р С‘Р Вµ Р В±Р ВµР В· Р С—РЎС“РЎРѓРЎвЂљР С•Р С–Р С• РЎРѓР С•Р Т‘Р ВµРЎР‚Р В¶Р С‘Р СР С•Р С–Р С•.")
         return
 
     data = await state.get_data()
@@ -566,7 +602,7 @@ async def receive_direct_message(
     except Exception:
         logger.exception("Failed to send admin direct message to user %s", user.telegram_id)
         await message.answer(
-            "Не удалось отправить сообщение пользователю. Можно попробовать ещё раз."
+            "Р СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С‘РЎвЂљРЎРЉ РЎРѓР С•Р С•Р В±РЎвЂ°Р ВµР Р…Р С‘Р Вµ Р С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°РЎвЂљР ВµР В»РЎР‹. Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В·."
         )
         return
 
@@ -599,8 +635,12 @@ async def receive_direct_message(
 async def start_manual_grant(
     callback: CallbackQuery,
     session: AsyncSession,
+    settings: Settings,
     state: FSMContext | None = None,
 ) -> None:
+    if not await _require_users_manage_access(callback, session=session, settings=settings):
+        return
+
     context = _parse_user_context(callback.data, "grant")
     if context is None:
         await callback.answer()
@@ -638,7 +678,11 @@ async def start_manual_grant(
 async def review_manual_grant(
     callback: CallbackQuery,
     session: AsyncSession,
+    settings: Settings,
 ) -> None:
+    if not await _require_users_manage_access(callback, session=session, settings=settings):
+        return
+
     context = _parse_user_tariff_context(callback.data, "grant-review")
     if context is None:
         await callback.answer()
@@ -661,7 +705,7 @@ async def review_manual_grant(
             f"Пользователь: {escape(_format_user_name(profile.user))}\n"
             f"Тариф: {escape(tariff.name)}\n"
             f"Срок: {tariff.duration_days} дн.\n"
-            f"Канал: {escape(tariff.channel.title)}"
+            f"РљР°РЅР°Р»: {escape(tariff.channel.title)}"
         ),
         reply_markup=admin_confirm_keyboard(
             confirm_callback=(
@@ -678,6 +722,9 @@ async def confirm_manual_grant(
     session: AsyncSession,
     settings: Settings,
 ) -> None:
+    if not await _require_users_manage_access(callback, session=session, settings=settings):
+        return
+
     context = _parse_user_tariff_context(callback.data, "grant-confirm")
     if context is None:
         await callback.answer()
@@ -733,7 +780,11 @@ async def confirm_manual_grant(
 async def review_block_toggle(
     callback: CallbackQuery,
     session: AsyncSession,
+    settings: Settings,
 ) -> None:
+    if not await _require_users_manage_access(callback, session=session, settings=settings):
+        return
+
     context = _parse_user_context(callback.data, "block")
     if context is None:
         await callback.answer()
@@ -766,6 +817,9 @@ async def confirm_block_toggle(
     session: AsyncSession,
     settings: Settings,
 ) -> None:
+    if not await _require_users_manage_access(callback, session=session, settings=settings):
+        return
+
     context = _parse_user_context(callback.data, "block-confirm")
     if context is None:
         await callback.answer()
@@ -805,3 +859,8 @@ async def confirm_block_toggle(
             else "Пользователь разблокирован."
         ),
     )
+
+
+
+
+

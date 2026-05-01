@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,11 +15,17 @@ from app.utils.datetime import ensure_aware_utc, utcnow
 
 DEFAULT_USER_PAGE_SIZE = 6
 USER_FILTER_LABELS: dict[str, str] = {
-    "all": "Все",
-    "active": "Активные",
-    "expired": "Истекло",
-    "never_paid": "Не покупали",
-    "blocked": "Заблокированные",
+    "all": "\u0412\u0441\u0435",
+    "active": "\u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0435",
+    "expired": "\u0418\u0441\u0442\u0435\u043a\u043b\u043e",
+    "never_paid": "\u041d\u0435 \u043f\u043e\u043a\u0443\u043f\u0430\u043b\u0438",
+    "expires_soon": (
+        "\u0418\u0441\u0442\u0435\u043a\u0430\u044e\u0442 \u0441\u043a\u043e\u0440\u043e"
+    ),
+    "pending_join": "\u041e\u0436\u0438\u0434\u0430\u044e\u0442 \u0432\u0445\u043e\u0434\u0430",
+    "blocked": (
+        "\u0417\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0435"
+    ),
     "stars": "Stars",
     "crypto": "Crypto",
 }
@@ -253,23 +259,26 @@ def describe_user_status(
     paid_count: int,
 ) -> str:
     if user.is_blocked:
-        return "заблокирован"
+        return "\u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d"
     if has_active_subscription:
-        return "активен"
+        return "\u0430\u043a\u0442\u0438\u0432\u0435\u043d"
     if latest_expires_at is not None:
-        return "истёк"
+        return "\u0438\u0441\u0442\u0451\u043a"
     if paid_count == 0:
-        return "не покупал"
-    return "без активной подписки"
+        return "\u043d\u0435 \u043f\u043e\u043a\u0443\u043f\u0430\u043b"
+    return (
+        "\u0431\u0435\u0437 \u0430\u043a\u0442\u0438\u0432\u043d\u043e\u0439 "
+        "\u043f\u043e\u0434\u043f\u0438\u0441\u043a\u0438"
+    )
 
 
 def filter_label(filter_key: str) -> str:
     if filter_key in USER_FILTER_LABELS:
         return USER_FILTER_LABELS[filter_key]
     if filter_key.startswith("tariff-"):
-        return f"Тариф #{filter_key.removeprefix('tariff-')}"
+        return f"\u0422\u0430\u0440\u0438\u0444 #{filter_key.removeprefix('tariff-')}"
     if filter_key.startswith("channel-"):
-        return f"Канал #{filter_key.removeprefix('channel-')}"
+        return f"\u041a\u0430\u043d\u0430\u043b #{filter_key.removeprefix('channel-')}"
     return filter_key
 
 
@@ -306,3 +315,4 @@ def _matches_filter(
         channel_id = int(filter_key.removeprefix("channel-"))
         return entry.user.id in channel_user_ids.get(channel_id, set())
     return True
+

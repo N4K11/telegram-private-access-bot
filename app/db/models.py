@@ -72,8 +72,14 @@ class Tariff(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    badge: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_trial: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_lifetime: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     price_stars: Mapped[int] = mapped_column(Integer, nullable=False)
     price_crypto: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    crypto_price_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    crypto_asset: Mapped[str | None] = mapped_column(String(32), nullable=True)
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -234,6 +240,56 @@ class BackupRecord(Base):
     )
 
 
+class SupportTicket(TimestampMixin, Base):
+    __tablename__ = "support_tickets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="open", nullable=False, index=True)
+    last_user_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_admin_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    closed_by_user: Mapped[User | None] = relationship(foreign_keys=[closed_by_user_id])
+    messages: Mapped[list[SupportMessage]] = relationship(
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="SupportMessage.id",
+    )
+
+
+class SupportMessage(Base):
+    __tablename__ = "support_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(
+        ForeignKey("support_tickets.id"),
+        nullable=False,
+        index=True,
+    )
+    sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    ticket: Mapped[SupportTicket] = relationship(back_populates="messages")
+    sender: Mapped[User] = relationship(foreign_keys=[sender_user_id])
+
+
 class CryptoInvoice(TimestampMixin, Base):
     __tablename__ = "crypto_invoices"
 
@@ -260,7 +316,13 @@ class PromoCode(TimestampMixin, Base):
     value: Mapped[int] = mapped_column(Integer, nullable=False)
     max_uses: Mapped[int] = mapped_column(Integer, nullable=False)
     tariff_id: Mapped[int | None] = mapped_column(ForeignKey("tariffs.id"), nullable=True)
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_purchase_only: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    per_user_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    campaign_name: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
@@ -270,9 +332,6 @@ class PromoCode(TimestampMixin, Base):
 
 class PromoRedemption(TimestampMixin, Base):
     __tablename__ = "promo_redemptions"
-    __table_args__ = (
-        UniqueConstraint("promo_code_id", "user_id", name="uq_promo_redemption_promo_user"),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     promo_code_id: Mapped[int] = mapped_column(
@@ -289,4 +348,3 @@ class PromoRedemption(TimestampMixin, Base):
     promo_code: Mapped[PromoCode] = relationship(back_populates="redemptions")
     payment: Mapped[Payment | None] = relationship()
     tariff: Mapped[Tariff | None] = relationship()
-

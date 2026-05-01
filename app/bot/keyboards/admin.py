@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import Sequence
 
@@ -7,27 +7,20 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot.keyboards.navigation import build_navigation_keyboard
 from app.db.models import Channel, Tariff
+from app.services.admin_roles import allowed_admin_menu_sections
 from app.utils.encoding import safe_ui_text
 
 ADMIN_HOME_TEXT = "🏠 Админ-панель"
 ADMIN_USER_MENU_TEXT = "⬅️ Назад в меню пользователя"
 
 
-def admin_main_menu_keyboard() -> InlineKeyboardMarkup:
+def admin_main_menu_keyboard(*, role: str | None = "owner") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for text, callback_data in (
-        ("📊 Аналитика", "menu:admin:analytics"),
-        ("👥 Пользователи", "menu:admin:users"),
-        ("💳 Платежи", "menu:admin:payments"),
-        ("🧾 Тарифы", "menu:admin:tariffs"),
-        ("📣 Каналы", "menu:admin:channels"),
-        ("✍️ Тексты", "menu:admin:texts"),
-        ("📢 Рассылки", "menu:admin:broadcasts"),
-        ("💾 Бэкапы", "menu:admin:backups"),
-        ("⚙️ Настройки", "menu:admin:settings"),
-        ("🧪 Диагностика", "menu:admin:diagnostics"),
-    ):
-        builder.button(text=text, callback_data=callback_data)
+    for section in allowed_admin_menu_sections(role):
+        builder.button(
+            text=section.button_text,
+            callback_data=f"menu:admin:{section.key}",
+        )
     builder.button(text=ADMIN_USER_MENU_TEXT, callback_data="menu:user:home")
     builder.adjust(1)
     return builder.as_markup()
@@ -115,6 +108,8 @@ def admin_tariff_detail_keyboard(
     *,
     is_active: bool,
     is_archived: bool,
+    is_trial: bool = False,
+    is_lifetime: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if not is_archived:
@@ -139,12 +134,33 @@ def admin_tariff_detail_keyboard(
             callback_data=f"menu:admin:tariffs:sort:{tariff_id}",
         )
         builder.button(
+            text="🏷 Изменить бейдж",
+            callback_data=f"menu:admin:tariffs:badge:{tariff_id}",
+        )
+        builder.button(
+            text="🧪 Trial: ВКЛ" if is_trial else "🧪 Trial: ВЫКЛ",
+            callback_data=f"menu:admin:tariffs:trial:{tariff_id}",
+        )
+        builder.button(
+            text="♾ Lifetime: ВКЛ" if is_lifetime else "♾ Lifetime: ВЫКЛ",
+            callback_data=f"menu:admin:tariffs:lifetime:{tariff_id}",
+        )
+        builder.button(
             text="⏸ Выключить" if is_active else "▶️ Включить",
             callback_data=f"menu:admin:tariffs:toggle:{tariff_id}",
         )
         builder.button(
+            text="👁 Превью как пользователь",
+            callback_data=f"menu:admin:tariffs:preview:{tariff_id}",
+        )
+        builder.button(
             text="🗄 Архивировать",
             callback_data=f"menu:admin:tariffs:archive:{tariff_id}",
+        )
+    else:
+        builder.button(
+            text="📤 Разархивировать",
+            callback_data=f"menu:admin:tariffs:unarchive:{tariff_id}",
         )
     builder.button(text="⬅️ Назад", callback_data="menu:admin:tariffs")
     builder.button(text=ADMIN_HOME_TEXT, callback_data="menu:admin:home")
@@ -168,3 +184,4 @@ def admin_channel_picker_keyboard(
     builder.button(text=ADMIN_HOME_TEXT, callback_data="menu:admin:home")
     builder.adjust(1)
     return builder.as_markup()
+

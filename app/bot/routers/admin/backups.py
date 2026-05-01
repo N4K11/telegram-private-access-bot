@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+﻿# ruff: noqa: E501
 from __future__ import annotations
 
 from html import escape
@@ -11,6 +11,7 @@ from app.bot.filters.admin import AdminFilter
 from app.bot.keyboards.admin_backups import admin_backups_keyboard
 from app.bot.routers.common import edit_or_answer
 from app.db.repositories.users import UserRepository
+from app.services.admin_roles import PERMISSION_BACKUPS
 from app.services.audit import write_audit_log
 from app.services.backups import (
     RESTORE_INSTRUCTIONS,
@@ -23,8 +24,8 @@ from app.services.backups import (
 from app.utils.datetime import format_datetime
 
 router = Router(name="admin_backups")
-router.message.filter(AdminFilter())
-router.callback_query.filter(AdminFilter())
+router.message.filter(AdminFilter(PERMISSION_BACKUPS))
+router.callback_query.filter(AdminFilter(PERMISSION_BACKUPS))
 
 
 async def _actor_user_id(session: AsyncSession, telegram_user_id: int | None) -> int | None:
@@ -145,3 +146,4 @@ async def create_backup_now(callback: CallbackQuery, session: AsyncSession, sett
         text=_render_backups_overview(records, settings),
         reply_markup=admin_backups_keyboard(),
     )
+

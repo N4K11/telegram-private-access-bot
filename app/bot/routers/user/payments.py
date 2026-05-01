@@ -44,7 +44,15 @@ from app.services.promo_service import (
     get_discount_quote_for_redemption,
     get_pending_discount_quote_for_tariff,
 )
-from app.services.tariffs import TariffValidationError, ensure_channel_can_host_tariff
+from app.services.tariffs import (
+    TariffValidationError,
+    effective_crypto_asset,
+    effective_crypto_price,
+    ensure_channel_can_host_tariff,
+    ensure_tariff_purchase_allowed,
+    tariff_badge_label,
+    tariff_duration_label,
+)
 from app.services.texts import render_text
 from app.utils.datetime import format_datetime
 from app.utils.encoding import safe_ui_text
@@ -68,7 +76,11 @@ async def _text(
     key: str,
     **context: object,
 ) -> str:
-    rendered = render_text(session, key, **context) if session is not None else render_text(key, **context)
+    rendered = (
+        render_text(session, key, **context)
+        if session is not None
+        else render_text(key, **context)
+    )
     if inspect.isawaitable(rendered):
         return await rendered
     return rendered
@@ -78,7 +90,6 @@ def _safe_tariff_name(tariff: Tariff) -> str:
     return safe_ui_text(tariff.name, f"Тариф #{tariff.id}")
 
 
-
 def _safe_channel_name(tariff: Tariff) -> str:
     return safe_ui_text(
         tariff.channel.title if tariff.channel is not None else None,
@@ -86,23 +97,45 @@ def _safe_channel_name(tariff: Tariff) -> str:
     )
 
 
+def _tariff_title(tariff: Tariff) -> str:
+    badge = tariff_badge_label(tariff)
+    title = _safe_tariff_name(tariff)
+    if badge:
+        return f"[{badge}] {title}"
+    return title
+
+
+def _crypto_price_label(tariff: Tariff, accepted_assets: list[str]) -> str | None:
+    price = effective_crypto_price(tariff)
+    if price is None:
+        return None
+    asset = effective_crypto_asset(tariff, accepted_assets)
+    if asset is None:
+        return str(price)
+    return f"{price} {asset}"
+
+
 async def _render_tariffs_overview(
     session: AsyncSession | None,
     tariffs: list[Tariff],
     *,
     crypto_enabled: bool,
+    accepted_assets: list[str],
 ) -> str:
     if not tariffs:
         return await _text(session, "tariffs_empty")
 
     lines: list[str] = []
     for index, tariff in enumerate(tariffs, start=1):
-        lines.append(f"{index}. 💎 {escape(_safe_tariff_name(tariff))}")
-        lines.append(f"   ⏳ Срок: {tariff.duration_days} дней")
+        lines.append(f"{index}. 💎 {escape(_tariff_title(tariff))}")
+        lines.append(f"   ⏳ Срок: {tariff_duration_label(tariff)}")
         lines.append(f"   ⭐ Цена: {tariff.price_stars} Stars")
         lines.append(f"   📣 Канал: {escape(_safe_channel_name(tariff))}")
-        if crypto_enabled and tariff.price_crypto is not None:
-            lines.append(f"   ₿ Crypto Pay: {tariff.price_crypto}")
+        if tariff.description:
+            lines.append(f"   📝 {escape(tariff.description)}")
+        crypto_label = _crypto_price_label(tariff, accepted_assets)
+        if crypto_enabled and crypto_label is not None:
+            lines.append(f"   ₿ Crypto Pay: {crypto_label}")
         if index != len(tariffs):
             lines.append("")
 
@@ -123,19 +156,30 @@ async def _render_tariff_detail(
     tariff: Tariff,
     *,
     crypto_enabled: bool,
+    accepted_assets: list[str],
 ) -> str:
     crypto_block = ""
-    if crypto_enabled and tariff.price_crypto is not None:
-        crypto_block = f"\n₿ Crypto Pay: {tariff.price_crypto}"
+    crypto_label = _crypto_price_label(tariff, accepted_assets)
+    if crypto_enabled and crypto_label is not None:
+        crypto_block = f"\n₿ Crypto Pay: {crypto_label}"
+
+    description_block = ""
+    if tariff.description:
+        description_block = f"\n📝 {escape(tariff.description)}"
+
+    badge_block = ""
+    badge = tariff_badge_label(tariff)
+    if badge:
+        badge_block = f"\n🏷 Бейдж: {escape(badge)}"
 
     return await _text(
         session,
         "tariff_detail",
-        tariff_name=_safe_tariff_name(tariff),
-        duration_days=tariff.duration_days,
+        tariff_name=_tariff_title(tariff),
+        duration_days=tariff_duration_label(tariff),
         price_stars=tariff.price_stars,
         channel_name=_safe_channel_name(tariff),
-        crypto_block=crypto_block,
+        crypto_block=crypto_block + description_block + badge_block,
     )
 
 
@@ -163,13 +207,14 @@ async def _render_payment_success_text(
     elif invite_error is not None:
         invite_block = "\n\n" + invite_error
 
+    expires_label = "Навсегда" if tariff.is_lifetime else format_datetime(expires_at, timezone)
     return await _text(
         session,
         "payment_success",
         action=action,
-        tariff_name=_safe_tariff_name(tariff),
+        tariff_name=_tariff_title(tariff),
         channel_name=_safe_channel_name(tariff),
-        expires_at=format_datetime(expires_at, timezone),
+        expires_at=expires_label,
         invite_block=invite_block,
     )
 
@@ -196,12 +241,6 @@ def _render_crypto_invoice_text(
     timezone: str,
     is_reused: bool,
 ) -> str:
-    tariff_name = safe_ui_text(tariff.name, f"Тариф #{tariff.id}")
-    channel_name = safe_ui_text(
-        tariff.channel.title if tariff.channel is not None else None,
-        f"Канал #{tariff.channel_id}",
-    )
-
     lines = []
     if is_reused:
         lines.append("♻️ Используем уже созданный счёт Crypto Pay.")
@@ -210,10 +249,10 @@ def _render_crypto_invoice_text(
     lines.extend(
         [
             "",
-            f"Тариф: {escape(tariff_name)}",
+            f"Тариф: {escape(_tariff_title(tariff))}",
             f"Актив: {asset}",
             f"Сумма: {amount}",
-            f"Канал: {escape(channel_name)}",
+            f"Канал: {escape(_safe_channel_name(tariff))}",
         ]
     )
     if expires_at is not None:
@@ -223,13 +262,12 @@ def _render_crypto_invoice_text(
     lines.extend(["", "После подтверждения оплаты подписка активируется автоматически."])
     return "\n".join(lines)
 
-
 @router.message(Command("paysupport"))
 async def paysupport_command(
     message: Message,
     session: AsyncSession | None = None,
 ) -> None:
-    await message.answer(await _text(session, "paysupport"))
+    await message.answer(await _text(session, "payment_support"))
 
 
 @router.callback_query(F.data == "menu:user:buy")
@@ -252,6 +290,7 @@ async def tariffs_section(callback: CallbackQuery, session: AsyncSession, settin
             session,
             tariffs,
             crypto_enabled=settings.crypto_pay_enabled,
+            accepted_assets=settings.crypto_pay_accepted_assets,
         ),
         reply_markup=user_tariffs_keyboard(tariffs, mode="browse"),
         banner_path=get_banner_path("tariffs"),
@@ -276,10 +315,14 @@ async def tariff_detail(callback: CallbackQuery, session: AsyncSession, settings
             session,
             tariff,
             crypto_enabled=settings.crypto_pay_enabled,
+            accepted_assets=settings.crypto_pay_accepted_assets,
         ),
         reply_markup=user_tariff_detail_keyboard(
             tariff.id,
-            include_crypto=settings.crypto_pay_enabled and tariff.price_crypto is not None,
+            include_crypto=(
+                settings.crypto_pay_enabled
+                and effective_crypto_price(tariff) is not None
+            ),
         ),
         banner_path=get_banner_path("buy"),
     )
@@ -301,7 +344,7 @@ async def buy_crypto_tariff(
     if user is None:
         user = await user_repository.upsert_from_telegram_user(
             callback.from_user,
-            admin_ids=settings.admin_ids_set,
+            admin_ids=settings.admin_ids_set if settings is not None else set(),
         )
     if user.is_blocked:
         await callback.answer("Покупка недоступна: пользователь заблокирован.", show_alert=True)
@@ -313,6 +356,11 @@ async def buy_crypto_tariff(
         return
 
     try:
+        await ensure_tariff_purchase_allowed(
+            session,
+            user_id=user.id,
+            tariff=tariff,
+        )
         result = await create_crypto_invoice(
             session,
             settings,
@@ -331,7 +379,7 @@ async def buy_crypto_tariff(
             },
         )
         await session.commit()
-    except (CryptoPayDisabledError, CryptoPayError) as exc:
+    except (TariffValidationError, CryptoPayDisabledError, CryptoPayError) as exc:
         await session.rollback()
         await callback.answer(str(exc), show_alert=True)
         return
@@ -358,7 +406,7 @@ async def buy_crypto_tariff(
 
 @router.callback_query(F.data.startswith("menu:user:buy:stars:"))
 @router.callback_query(F.data.startswith("menu:user:buy:"))
-async def buy_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
+async def buy_tariff(callback: CallbackQuery, session: AsyncSession, settings: Settings | None = None) -> None:
     if callback.data is not None and ":crypto:" in callback.data:
         await callback.answer()
         return
@@ -368,8 +416,14 @@ async def buy_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
         await callback.answer()
         return
 
-    user = await UserRepository(session).get_by_telegram_id(callback.from_user.id)
-    if user is not None and user.is_blocked:
+    user_repository = UserRepository(session)
+    user = await user_repository.get_by_telegram_id(callback.from_user.id)
+    if user is None:
+        user = await user_repository.upsert_from_telegram_user(
+            callback.from_user,
+            admin_ids=settings.admin_ids_set if settings is not None else set(),
+        )
+    if user.is_blocked:
         await callback.answer("Покупка недоступна: пользователь заблокирован.", show_alert=True)
         return
 
@@ -378,13 +432,21 @@ async def buy_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
         await callback.answer("Тариф недоступен.", show_alert=True)
         return
 
-    promo_quote = None
-    if user is not None:
-        promo_quote = await get_pending_discount_quote_for_tariff(
+    try:
+        await ensure_tariff_purchase_allowed(
             session,
             user_id=user.id,
             tariff=tariff,
         )
+    except TariffValidationError as exc:
+        await callback.answer(str(exc), show_alert=True)
+        return
+
+    promo_quote = await get_pending_discount_quote_for_tariff(
+        session,
+        user_id=user.id,
+        tariff=tariff,
+    )
 
     invoice_payload = build_stars_invoice_payload(
         tariff.id,
@@ -404,33 +466,32 @@ async def buy_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
         await callback.answer("Не удалось отправить счёт на оплату.", show_alert=True)
         return
 
-    if user is not None:
-        try:
-            payload = {
-                "tariff_id": tariff.id,
-                "amount": invoice_amount,
-            }
-            if promo_quote is not None:
-                payload.update(
-                    {
-                        "promo_code": promo_quote.promo_code.code,
-                        "full_amount": promo_quote.original_amount,
-                        "discount_amount": promo_quote.savings_amount,
-                    }
-                )
-            await write_audit_log(
-                session,
-                action="invoice_created_stars",
-                target_user_id=user.id,
-                payload=payload,
+    try:
+        payload = {
+            "tariff_id": tariff.id,
+            "amount": invoice_amount,
+        }
+        if promo_quote is not None:
+            payload.update(
+                {
+                    "promo_code": promo_quote.promo_code.code,
+                    "full_amount": promo_quote.original_amount,
+                    "discount_amount": promo_quote.savings_amount,
+                }
             )
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            logger.exception(
-                "Failed to write invoice_created_stars audit log for user %s",
-                user.id,
-            )
+        await write_audit_log(
+            session,
+            action="invoice_created_stars",
+            target_user_id=user.id,
+            payload=payload,
+        )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        logger.exception(
+            "Failed to write invoice_created_stars audit log for user %s",
+            user.id,
+        )
 
     if promo_quote is not None:
         await callback.answer(
@@ -442,8 +503,11 @@ async def buy_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
 
 @router.pre_checkout_query()
 async def pre_checkout_handler(query: PreCheckoutQuery, session: AsyncSession) -> None:
-    user = await UserRepository(session).get_by_telegram_id(query.from_user.id)
-    if user is not None and user.is_blocked:
+    user_repository = UserRepository(session)
+    user = await user_repository.get_by_telegram_id(query.from_user.id)
+    if user is None:
+        user = await user_repository.upsert_from_telegram_user(query.from_user, admin_ids=set())
+    if user.is_blocked:
         await query.answer(ok=False, error_message="Покупка недоступна: пользователь заблокирован.")
         return
 
@@ -452,12 +516,11 @@ async def pre_checkout_handler(query: PreCheckoutQuery, session: AsyncSession) -
         tariff = await _load_active_tariff(session, payload.tariff_id)
         if tariff is None:
             raise StarsInvoiceError("Тариф недоступен.")
+        await ensure_tariff_purchase_allowed(session, user_id=user.id, tariff=tariff)
         if query.currency != STARS_CURRENCY:
             raise StarsInvoiceError("Поддерживаются только Telegram Stars.")
 
         if payload.promo_redemption_id is not None:
-            if user is None:
-                raise StarsInvoiceError("Промокод больше недоступен.")
             quote = await get_discount_quote_for_redemption(
                 session,
                 redemption_id=payload.promo_redemption_id,
@@ -468,7 +531,7 @@ async def pre_checkout_handler(query: PreCheckoutQuery, session: AsyncSession) -
                 raise StarsInvoiceError("Цена изменилась. Открой тариф заново.")
         elif query.total_amount != tariff.price_stars:
             raise StarsInvoiceError("Цена изменилась. Открой тариф заново.")
-    except (PromoCodeError, StarsInvoiceError) as exc:
+    except (PromoCodeError, StarsInvoiceError, TariffValidationError) as exc:
         await query.answer(ok=False, error_message=str(exc))
         return
 
@@ -490,7 +553,7 @@ async def successful_payment_handler(
     if user is None:
         user = await user_repository.upsert_from_telegram_user(
             message.from_user,
-            admin_ids=settings.admin_ids_set,
+            admin_ids=settings.admin_ids_set if settings is not None else set(),
         )
 
     existing_payment = await PaymentRepository(session).get_by_telegram_charge_id(
@@ -503,9 +566,10 @@ async def successful_payment_handler(
     promo_quote = None
     try:
         payload = parse_stars_invoice_payload(message.successful_payment.invoice_payload)
-        tariff = await TariffRepository(session).get_by_id(payload.tariff_id)
+        tariff = await _load_active_tariff(session, payload.tariff_id)
         if tariff is None:
             raise StarsInvoiceError("Тариф не найден.")
+        await ensure_tariff_purchase_allowed(session, user_id=user.id, tariff=tariff, now=message.date)
 
         if payload.promo_redemption_id is not None:
             promo_quote = await get_discount_quote_for_redemption(
@@ -555,10 +619,10 @@ async def successful_payment_handler(
                 payload=payload_dict,
             )
         await session.commit()
-    except (PromoCodeError, StarsInvoiceError) as exc:
+    except (PromoCodeError, StarsInvoiceError, TariffValidationError) as exc:
         await session.rollback()
         await message.answer(await _text(session, "payment_failed", reason=str(exc)))
-        await message.answer(await _text(session, "paysupport"))
+        await message.answer(await _text(session, "payment_support"))
         return
     except Exception:
         await session.rollback()
@@ -573,7 +637,7 @@ async def successful_payment_handler(
                 reason="внутренняя ошибка обработки",
             )
         )
-        await message.answer(await _text(session, "paysupport"))
+        await message.answer(await _text(session, "payment_support"))
         return
 
     if result.is_duplicate:
@@ -588,7 +652,7 @@ async def successful_payment_handler(
                 reason="подписка не была обновлена автоматически",
             )
         )
-        await message.answer(await _text(session, "paysupport"))
+        await message.answer(await _text(session, "payment_support"))
         return
 
     invite_link: str | None = None
@@ -628,3 +692,12 @@ async def successful_payment_handler(
             invite_error=invite_error,
         )
     )
+
+
+
+
+
+
+
+
+

@@ -16,6 +16,8 @@ from app.services.promo_service import (
     apply_promo_code,
     create_promo_code,
     get_pending_discount_quote_for_tariff,
+    get_promo_stats,
+    list_promo_codes,
     parse_promo_draft,
 )
 
@@ -38,6 +40,7 @@ async def _seed_user_channel_tariff(
     session: AsyncSession,
     *,
     telegram_id: int = 42,
+    title: str = "Основной канал",
 ) -> tuple[User, Tariff]:
     user = User(
         telegram_id=telegram_id,
@@ -47,7 +50,7 @@ async def _seed_user_channel_tariff(
     )
     channel = Channel(
         telegram_chat_id=-1001234567890 - telegram_id,
-        title="Основной канал",
+        title=title,
         invite_users_permission=True,
         ban_users_permission=True,
         is_active=True,
@@ -56,7 +59,7 @@ async def _seed_user_channel_tariff(
     await session.flush()
 
     tariff = Tariff(
-        name="VIP 30",
+        name=f"VIP {telegram_id}",
         price_stars=250,
         duration_days=30,
         sort_order=10,
@@ -78,7 +81,7 @@ async def test_apply_promo_rejects_not_found() -> None:
         await _close_session(session, engine)
 
 
-async def test_apply_promo_rejects_disabled_and_expired() -> None:
+async def test_apply_promo_rejects_disabled_expired_and_not_yet_valid() -> None:
     session, engine = await _create_session()
     try:
         user, tariff = await _seed_user_channel_tariff(session)
@@ -104,11 +107,22 @@ async def test_apply_promo_rejects_disabled_and_expired() -> None:
                 value="50",
                 max_uses="5",
                 tariff_id=str(tariff.id),
-                valid_days="1",
+                valid_until="2026-05-01T11:00:00+00:00",
             ),
-            now=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
         )
-        expired.expires_at = datetime(2026, 5, 1, 11, 0, tzinfo=UTC)
+
+        future = await create_promo_code(
+            session,
+            actor_user_id=None,
+            draft=parse_promo_draft(
+                code="WAIT50",
+                promo_type="discount_stars",
+                value="50",
+                max_uses="5",
+                tariff_id=str(tariff.id),
+                valid_from="2026-05-01T13:00:00+00:00",
+            ),
+        )
         await session.commit()
 
         with pytest.raises(PromoCodeError, match="Промокод отключён"):
@@ -120,6 +134,51 @@ async def test_apply_promo_rejects_disabled_and_expired() -> None:
                 code=expired.code,
                 now=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
             )
+        with pytest.raises(PromoCodeError, match="ещё не активен"):
+            await apply_promo_code(
+                session,
+                user_id=user.id,
+                code=future.code,
+                now=datetime(2026, 5, 1, 12, 0, tzinfo=UTC),
+            )
+    finally:
+        await _close_session(session, engine)
+
+
+async def test_first_purchase_only_rejects_after_paid_payment() -> None:
+    session, engine = await _create_session()
+    try:
+        user, tariff = await _seed_user_channel_tariff(session)
+        session.add(
+            Payment(
+                user_id=user.id,
+                tariff_id=tariff.id,
+                channel_id=tariff.channel_id,
+                amount=250,
+                currency="XTR",
+                provider="telegram_stars",
+                invoice_payload="subscription:1",
+                provider_payment_charge_id="provider-paid",
+                paid_at=datetime(2026, 5, 1, 11, 0, tzinfo=UTC),
+                status="paid",
+            )
+        )
+        promo = await create_promo_code(
+            session,
+            actor_user_id=None,
+            draft=parse_promo_draft(
+                code="FIRST20",
+                promo_type="discount_percent",
+                value="20",
+                max_uses="5",
+                tariff_id=str(tariff.id),
+                first_purchase_only="1",
+            ),
+        )
+        await session.commit()
+
+        with pytest.raises(PromoCodeError, match="только до первой успешной оплаты"):
+            await apply_promo_code(session, user_id=user.id, code=promo.code)
     finally:
         await _close_session(session, engine)
 
@@ -164,10 +223,15 @@ async def test_free_days_grants_subscription_without_fake_payment() -> None:
         await _close_session(session, engine)
 
 
-async def test_discount_promo_changes_invoice_amount() -> None:
+async def test_discount_promo_changes_invoice_amount_and_rejects_wrong_tariff() -> None:
     session, engine = await _create_session()
     try:
-        user, tariff = await _seed_user_channel_tariff(session)
+        user, tariff = await _seed_user_channel_tariff(session, telegram_id=42)
+        _, other_tariff = await _seed_user_channel_tariff(
+            session,
+            telegram_id=77,
+            title="Другой канал",
+        )
         promo = await create_promo_code(
             session,
             actor_user_id=None,
@@ -194,11 +258,51 @@ async def test_discount_promo_changes_invoice_amount() -> None:
         assert quote.original_amount == 250
         assert quote.final_amount == 200
         assert quote.savings_amount == 50
+
+        wrong_quote = await get_pending_discount_quote_for_tariff(
+            session,
+            user_id=user.id,
+            tariff=other_tariff,
+        )
+        assert wrong_quote is None
     finally:
         await _close_session(session, engine)
 
 
-async def test_max_uses_and_repeated_use_by_same_user_are_rejected() -> None:
+async def test_per_user_limit_allows_multiple_uses_then_rejects() -> None:
+    session, engine = await _create_session()
+    try:
+        user, tariff = await _seed_user_channel_tariff(session, telegram_id=42)
+        promo = await create_promo_code(
+            session,
+            actor_user_id=None,
+            draft=parse_promo_draft(
+                code="FREE2X",
+                promo_type=PROMO_TYPE_FREE_DAYS,
+                value="2",
+                max_uses="5",
+                tariff_id=str(tariff.id),
+                per_user_limit="2",
+            ),
+        )
+        await session.commit()
+
+        await apply_promo_code(session, user_id=user.id, code=promo.code)
+        await session.commit()
+        await apply_promo_code(session, user_id=user.id, code=promo.code)
+        await session.commit()
+
+        with pytest.raises(PromoCodeError, match="Персональный лимит"):
+            await apply_promo_code(session, user_id=user.id, code=promo.code)
+
+        redemptions = list((await session.execute(select(PromoRedemption))).scalars())
+        assert len(redemptions) == 2
+        assert all(redemption.status == "consumed" for redemption in redemptions)
+    finally:
+        await _close_session(session, engine)
+
+
+async def test_max_uses_rejects_when_global_limit_is_exhausted() -> None:
     session, engine = await _create_session()
     try:
         user_one, tariff = await _seed_user_channel_tariff(session, telegram_id=42)
@@ -224,11 +328,44 @@ async def test_max_uses_and_repeated_use_by_same_user_are_rejected() -> None:
         )
         await session.commit()
 
-        with pytest.raises(PromoCodeError, match="уже использован"):
-            await apply_promo_code(session, user_id=user_one.id, code=promo.code)
         with pytest.raises(PromoCodeError, match="Лимит использований"):
             await apply_promo_code(session, user_id=user_two.id, code=promo.code)
     finally:
         await _close_session(session, engine)
+
+
+async def test_list_and_stats_are_read_only() -> None:
+    session, engine = await _create_session()
+    try:
+        user, tariff = await _seed_user_channel_tariff(session)
+        promo = await create_promo_code(
+            session,
+            actor_user_id=None,
+            draft=parse_promo_draft(
+                code="SPRING50",
+                promo_type="discount_stars",
+                value="50",
+                max_uses="3",
+                tariff_id=str(tariff.id),
+                campaign_name="Spring_Sale",
+            ),
+        )
+        await session.commit()
+
+        await apply_promo_code(session, user_id=user.id, code=promo.code)
+        await session.commit()
+
+        promos = await list_promo_codes(session, search="spring", limit=10)
+        stats = await get_promo_stats(session, code=promo.code)
+
+        assert len(promos) == 1
+        assert promos[0].code == promo.code
+        assert stats.pending_count == 1
+        assert stats.consumed_count == 0
+        assert stats.total_uses == 1
+        assert not session.dirty
+    finally:
+        await _close_session(session, engine)
+
 
 

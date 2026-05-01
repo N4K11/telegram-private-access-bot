@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -8,11 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.filters.admin import AdminFilter
 from app.bot.keyboards.admin_users import admin_analytics_keyboard
 from app.bot.routers.common import edit_or_answer
+from app.services.admin_roles import PERMISSION_ANALYTICS
 from app.services.analytics import AnalyticsSnapshot, build_analytics_snapshot
 
 router = Router(name="admin_analytics")
-router.message.filter(AdminFilter())
-router.callback_query.filter(AdminFilter())
+router.message.filter(AdminFilter(PERMISSION_ANALYTICS))
+router.callback_query.filter(AdminFilter(PERMISSION_ANALYTICS))
 
 
 
@@ -79,3 +80,4 @@ async def analytics_dashboard(
         text=_render_analytics(snapshot),
         reply_markup=admin_analytics_keyboard(),
     )
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -80,7 +80,7 @@ class BroadcastDeliveryRepository:
             select(BroadcastDelivery, User.telegram_id)
             .join(User, User.id == BroadcastDelivery.user_id)
             .where(BroadcastDelivery.campaign_id == campaign_id)
-            .where(BroadcastDelivery.status.in_(("failed", "blocked")))
+            .where(BroadcastDelivery.status.in_(("failed", "blocked", "rate_limited")))
             .order_by(BroadcastDelivery.id.desc())
             .limit(limit)
         )
@@ -114,5 +114,15 @@ class BroadcastDeliveryRepository:
         error_message: str,
     ) -> BroadcastDelivery:
         delivery.status = "blocked"
+        delivery.error_message = error_message[:1000]
+        return delivery
+
+    async def mark_rate_limited(
+        self,
+        delivery: BroadcastDelivery,
+        *,
+        error_message: str,
+    ) -> BroadcastDelivery:
+        delivery.status = "rate_limited"
         delivery.error_message = error_message[:1000]
         return delivery

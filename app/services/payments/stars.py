@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Payment, Subscription, Tariff
 from app.db.repositories.payments import PaymentRepository
 from app.db.repositories.subscriptions import SubscriptionRepository
+from app.services.observability import EVENT_PAYMENT_STARS_PAID
 from app.services.referral_service import (
     consume_pending_referral_reward_days,
     get_pending_referral_reward_days,
@@ -23,6 +25,8 @@ STARS_CURRENCY = "XTR"
 STARS_PROVIDER = "telegram_stars"
 _STARS_PAYLOAD_PREFIX = "stars:tariff:"
 _PROMO_PAYLOAD_SEPARATOR = ":promo:"
+
+logger = logging.getLogger(__name__)
 
 
 class StarsInvoiceError(ValueError):
@@ -182,6 +186,19 @@ async def process_successful_stars_payment(
         payment=payment,
         reward_days=referral_reward_days,
         paid_at=payment_time,
+    )
+    logger.info(
+        "Processed Telegram Stars payment %s for tariff %s.",
+        payment.id,
+        tariff.id,
+        extra={
+            "event_name": EVENT_PAYMENT_STARS_PAID,
+            "user_id": user_id,
+            "tariff_id": tariff.id,
+            "payment_id": payment.id,
+            "subscription_id": subscription_change.subscription.id,
+            "provider": STARS_PROVIDER,
+        },
     )
     return StarsPaymentProcessingResult(
         payment=payment,

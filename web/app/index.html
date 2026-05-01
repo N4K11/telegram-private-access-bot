@@ -1,0 +1,272 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Private Access Cabinet</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f3;
+      --panel: rgba(255,255,255,0.86);
+      --text: #16312d;
+      --muted: #5b746d;
+      --line: rgba(22,49,45,0.08);
+      --accent: #7ec5b4;
+      --accent-strong: #2f7d6d;
+      --warn: #d06b5d;
+      --shadow: 0 18px 40px rgba(26, 57, 49, 0.08);
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top right, rgba(126, 197, 180, 0.28), transparent 28%),
+        radial-gradient(circle at left center, rgba(166, 208, 236, 0.22), transparent 24%),
+        var(--bg);
+      color: var(--text);
+    }
+    .shell { width: min(980px, 100%); margin: 0 auto; padding: 24px 16px 48px; }
+    .hero {
+      display: grid;
+      gap: 12px;
+      padding: 20px;
+      border-radius: 28px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.92), rgba(248,251,249,0.86));
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(255,255,255,0.7);
+      backdrop-filter: blur(14px);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(126, 197, 180, 0.14);
+      color: var(--accent-strong);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .hero h1 { margin: 0; font-size: clamp(28px, 6vw, 42px); line-height: 1.05; letter-spacing: -0.03em; }
+    .hero p { margin: 0; max-width: 58ch; color: var(--muted); line-height: 1.55; }
+    .meta { display: flex; flex-wrap: wrap; gap: 10px; }
+    .pill { padding: 8px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+    .grid { display: grid; gap: 16px; margin-top: 18px; }
+    .grid.columns-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .card {
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.72);
+      border-radius: 24px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+    .card h2 { margin: 0 0 14px; font-size: 18px; letter-spacing: -0.02em; }
+    .stack { display: grid; gap: 12px; }
+    .row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .row:last-child { border-bottom: 0; padding-bottom: 0; }
+    .label { color: var(--muted); font-size: 13px; }
+    .value { text-align: right; font-weight: 600; }
+    .status { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 999px; background: rgba(126, 197, 180, 0.12); color: var(--accent-strong); font-weight: 600; }
+    .list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .list-item { padding: 14px; border-radius: 18px; background: rgba(255,255,255,0.68); border: 1px solid var(--line); }
+    .list-item strong { display: block; margin-bottom: 4px; }
+    .list-item small { color: var(--muted); }
+    .empty { padding: 16px; border-radius: 18px; background: rgba(255,255,255,0.6); color: var(--muted); border: 1px dashed var(--line); }
+    .error { background: rgba(208, 107, 93, 0.12); color: #8a3b30; }
+    .loading { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); }
+    .loading::before { content: ""; width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(47, 125, 109, 0.18); border-top-color: var(--accent-strong); animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 640px) { .shell { padding: 14px 12px 32px; } .hero, .card { border-radius: 20px; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <span class="eyebrow">Telegram Mini App</span>
+      <h1>Кабинет доступа</h1>
+      <p>Профиль, тарифы, история оплат и реферальная статистика в одном лёгком интерфейсе.</p>
+      <div class="meta" id="hero-meta"></div>
+    </section>
+    <section class="grid columns-2" id="app-content" aria-live="polite">
+      <article class="card"><div class="loading">Загружаю кабинет...</div></article>
+    </section>
+  </main>
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    if (tg) { tg.ready(); tg.expand(); }
+
+    const content = document.getElementById('app-content');
+    const heroMeta = document.getElementById('hero-meta');
+    const basePath = window.location.pathname.replace(/\/$/, '');
+    const initData = (tg && tg.initData) || new URLSearchParams(window.location.search).get('initData') || '';
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function renderMeta(items) {
+      heroMeta.innerHTML = items.map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join('');
+    }
+
+    function renderEmpty(title, body, extraClass = '') {
+      content.innerHTML = `<article class="card ${extraClass}"><h2>${escapeHtml(title)}</h2><div class="empty ${extraClass}">${escapeHtml(body)}</div></article>`;
+    }
+
+    function renderRows(rows) {
+      return rows.map((row) => `
+        <div class="row">
+          <span class="label">${escapeHtml(row.label)}</span>
+          <span class="value">${escapeHtml(row.value ?? '—')}</span>
+        </div>
+      `).join('');
+    }
+
+    function renderList(items, mapper, emptyText) {
+      if (!items || !items.length) {
+        return `<div class="empty">${escapeHtml(emptyText)}</div>`;
+      }
+      return `<ul class="list">${items.map((item) => `<li class="list-item">${mapper(item)}</li>`).join('')}</ul>`;
+    }
+
+    function renderCabinet(data, adminSummary) {
+      const viewer = data.viewer || {};
+      const profile = data.profile || {};
+      const referrals = data.referrals || {};
+      const payments = data.recent_payments || [];
+      const tariffs = data.tariffs || [];
+
+      renderMeta([
+        viewer.display_name || `ID ${viewer.telegram_id}`,
+        profile.status_label || 'Нет статуса',
+        `Роль: ${viewer.role || 'user'}`,
+        viewer.is_admin ? 'Админ доступ' : 'Пользовательский режим',
+      ]);
+
+      content.innerHTML = `
+        <article class="card">
+          <h2>Профиль</h2>
+          <div class="stack">
+            <div class="status">${escapeHtml(profile.status_label || 'Нет данных')}</div>
+            ${renderRows([
+              { label: 'Telegram ID', value: viewer.telegram_id },
+              { label: 'Username', value: viewer.username ? '@' + viewer.username : '—' },
+              { label: 'Доступ до', value: profile.latest_expires_at_label || '—' },
+              { label: 'Осталось', value: profile.remaining_label || '—' },
+              { label: 'Тариф', value: profile.current_tariff_label || '—' },
+              { label: 'Канал', value: profile.current_channel_label || '—' },
+              { label: 'Stars оплачено', value: profile.total_stars_amount ?? 0 },
+            ])}
+          </div>
+        </article>
+        <article class="card">
+          <h2>Рефералы</h2>
+          <div class="stack">
+            ${renderRows([
+              { label: 'Код', value: referrals.referral_payload || profile.referral_payload || '—' },
+              { label: 'Приглашено', value: referrals.invited_users_count ?? 0 },
+              { label: 'Оплатили', value: referrals.paid_referrals_count ?? 0 },
+              { label: 'Начислено дней', value: referrals.earned_days ?? 0 },
+              { label: 'Бонус к следующей оплате', value: referrals.pending_reward_days ?? profile.pending_referral_reward_days ?? 0 },
+            ])}
+          </div>
+        </article>
+        <article class="card">
+          <h2>Тарифы</h2>
+          ${renderList(
+            tariffs,
+            (tariff) => `
+              <strong>${escapeHtml(tariff.name)}</strong>
+              <small>${escapeHtml(tariff.channel_title || 'Без канала')} · ${escapeHtml(tariff.duration_days)} дн. · ${escapeHtml(tariff.price_stars)} Stars</small>
+            `,
+            'Активных тарифов пока нет.'
+          )}
+        </article>
+        <article class="card">
+          <h2>История оплат</h2>
+          ${renderList(
+            payments,
+            (payment) => `
+              <strong>${escapeHtml(payment.tariff_name)}</strong>
+              <small>${escapeHtml(payment.amount_label)} · ${escapeHtml(payment.paid_at_label || 'без даты')}</small>
+            `,
+            'Оплат пока нет.'
+          )}
+        </article>
+        ${adminSummary ? `
+          <article class="card" style="grid-column: 1 / -1;">
+            <h2>Admin summary</h2>
+            <div class="grid columns-2">
+              <div class="stack">${renderRows([
+                { label: 'Пользователи', value: adminSummary.total_users },
+                { label: 'Активные подписки', value: adminSummary.active_subscriptions },
+                { label: 'Истекли', value: adminSummary.expired_users },
+                { label: 'Никогда не платили', value: adminSummary.never_paid_users },
+              ])}</div>
+              <div class="stack">${renderRows([
+                { label: 'Выручка сегодня', value: adminSummary.revenue_today },
+                { label: 'Выручка 7 дней', value: adminSummary.revenue_7_days },
+                { label: 'Выручка 30 дней', value: adminSummary.revenue_30_days },
+                { label: 'Всего Stars', value: adminSummary.revenue_total },
+              ])}</div>
+            </div>
+          </article>
+        ` : ''}
+      `;
+    }
+
+    async function request(path, options = {}) {
+      const response = await fetch(path, options);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false) {
+        const error = payload && payload.error ? payload.error : `HTTP ${response.status}`;
+        throw new Error(error);
+      }
+      return payload;
+    }
+
+    async function boot() {
+      if (!initData) {
+        renderEmpty('Нет initData', 'Открой этот кабинет из Telegram, чтобы Mini App смог подтвердить твою сессию.', 'error');
+        return;
+      }
+      try {
+        await request(`${basePath}/api/auth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ init_data: initData }),
+        });
+        const bootstrap = await request(`${basePath}/api/bootstrap`, {
+          headers: { 'X-Telegram-Init-Data': initData },
+        });
+        let adminSummary = null;
+        if (bootstrap.data && bootstrap.data.viewer && bootstrap.data.viewer.is_admin) {
+          try {
+            const admin = await request(`${basePath}/api/admin/summary`, {
+              headers: { 'X-Telegram-Init-Data': initData },
+            });
+            adminSummary = admin.data;
+          } catch (error) {
+            adminSummary = null;
+          }
+        }
+        renderCabinet(bootstrap.data, adminSummary);
+      } catch (error) {
+        renderEmpty('Ошибка кабинета', error.message || 'Не удалось загрузить данные.', 'error');
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>

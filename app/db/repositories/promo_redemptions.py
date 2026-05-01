@@ -23,7 +23,7 @@ class PromoRedemptionRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_promo_and_user(
+    async def get_latest_for_promo_and_user(
         self,
         promo_code_id: int,
         user_id: int,
@@ -34,6 +34,7 @@ class PromoRedemptionRepository:
             .options(selectinload(PromoRedemption.tariff))
             .where(PromoRedemption.promo_code_id == promo_code_id)
             .where(PromoRedemption.user_id == user_id)
+            .order_by(PromoRedemption.updated_at.desc(), PromoRedemption.id.desc())
             .limit(1)
         )
         return result.scalar_one_or_none()
@@ -57,6 +58,21 @@ class PromoRedemptionRepository:
         result = await self._session.execute(
             select(func.count(PromoRedemption.id))
             .where(PromoRedemption.promo_code_id == promo_code_id)
+            .where(PromoRedemption.status.in_(tuple(statuses)))
+        )
+        value = result.scalar_one()
+        return int(value or 0)
+
+    async def count_for_user_and_promo_by_statuses(
+        self,
+        promo_code_id: int,
+        user_id: int,
+        statuses: Sequence[str],
+    ) -> int:
+        result = await self._session.execute(
+            select(func.count(PromoRedemption.id))
+            .where(PromoRedemption.promo_code_id == promo_code_id)
+            .where(PromoRedemption.user_id == user_id)
             .where(PromoRedemption.status.in_(tuple(statuses)))
         )
         value = result.scalar_one()
@@ -114,15 +130,6 @@ class PromoRedemptionRepository:
             redemption.status = "cancelled"
             cancelled += 1
         return cancelled
-
-    async def activate_pending(self, redemption: PromoRedemption) -> PromoRedemption:
-        redemption.status = "pending"
-        redemption.payment_id = None
-        redemption.applied_tariff_id = None
-        redemption.amount_before = None
-        redemption.amount_after = None
-        redemption.used_at = None
-        return redemption
 
     async def mark_consumed(
         self,

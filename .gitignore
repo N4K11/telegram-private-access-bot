@@ -1,11 +1,16 @@
 .env
 .env.local
+.env.*
+!.env.example
 .venv/
 .vendor/
 .tmp/
 .pyhome/
 .testdata/
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
@@ -16,6 +21,8 @@ build/
 *.egg-info/
 *.db
 *.sqlite3
+*.log
+logs/
 backups/*
 !backups/.gitkeep
 postgres_data/

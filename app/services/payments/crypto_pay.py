@@ -1,4 +1,4 @@
-﻿# ruff: noqa: E501
+# ruff: noqa: E501
 from __future__ import annotations
 
 import asyncio
@@ -23,12 +23,14 @@ from app.db.repositories.payments import PaymentRepository
 from app.db.repositories.subscriptions import SubscriptionRepository
 from app.db.repositories.tariffs import TariffRepository
 from app.services.audit import write_audit_log
+from app.services.observability import EVENT_PAYMENT_CRYPTO_PAID
 from app.services.referral_service import (
     consume_pending_referral_reward_days,
     get_pending_referral_reward_days,
     grant_referral_reward_for_first_payment,
 )
 from app.services.subscriptions import activate_or_extend_subscription
+from app.services.tariffs import effective_crypto_asset, effective_crypto_price
 from app.utils.datetime import ensure_aware_utc, utcnow
 from app.utils.encoding import safe_ui_text
 
@@ -182,7 +184,9 @@ async def create_crypto_invoice(
 ) -> CryptoInvoiceCreationResult:
     if not settings.crypto_pay_enabled:
         raise CryptoPayDisabledError("\u041e\u043f\u043b\u0430\u0442\u0430 \u0447\u0435\u0440\u0435\u0437 Crypto Pay \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430.")
-    if tariff.price_crypto is None or tariff.price_crypto <= 0:
+
+    crypto_price = effective_crypto_price(tariff)
+    if crypto_price is None or crypto_price <= 0:
         raise CryptoPayError("\u0414\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0442\u0430\u0440\u0438\u0444\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430 \u0446\u0435\u043d\u0430 \u0432 Crypto Pay.")
 
     current_time = ensure_aware_utc(now or utcnow())
@@ -208,10 +212,11 @@ async def create_crypto_invoice(
         return CryptoInvoiceCreationResult(invoice=reusable, remote_invoice=remote, is_reused=True)
 
     crypto_client = client or CryptoPayHTTPClient.from_settings(settings)
-    asset = _resolve_crypto_asset(settings)
+    asset = effective_crypto_asset(tariff, settings.crypto_pay_accepted_assets)
+    asset = asset or _resolve_crypto_asset(settings)
     remote_invoice = await crypto_client.create_invoice(
         asset=asset,
-        amount=str(Decimal(tariff.price_crypto)),
+        amount=str(Decimal(crypto_price)),
         description=_build_crypto_invoice_description(tariff),
         payload=build_crypto_invoice_payload(user_id, tariff.id, at_time=current_time),
         expires_in=DEFAULT_CRYPTO_INVOICE_TTL_SECONDS,
@@ -230,12 +235,23 @@ async def create_crypto_invoice(
         expires_at=remote_invoice.expires_at,
         raw_payload=json.dumps(remote_invoice.raw_payload, ensure_ascii=False, sort_keys=True),
     )
+    await write_audit_log(
+        session,
+        action="crypto_invoice_created",
+        target_user_id=user_id,
+        payload={
+            "crypto_invoice_id": invoice.id,
+            "external_id": invoice.external_id,
+            "tariff_id": tariff.id,
+            "asset": remote_invoice.asset,
+            "amount": str(remote_invoice.amount),
+        },
+    )
     return CryptoInvoiceCreationResult(
         invoice=invoice,
         remote_invoice=remote_invoice,
         is_reused=False,
     )
-
 
 async def sync_crypto_invoice(
     session: AsyncSession,
@@ -272,6 +288,15 @@ async def sync_crypto_invoice(
                 "external_id": invoice.external_id,
             },
         )
+        await write_audit_log(
+            session,
+            action="crypto_invoice_expired",
+            target_user_id=invoice.user_id,
+            payload={
+                "crypto_invoice_id": invoice.id,
+                "external_id": invoice.external_id,
+            },
+        )
         return CryptoInvoiceSyncResult(
             invoice=invoice,
             payment=None,
@@ -298,6 +323,16 @@ async def sync_crypto_invoice(
         subscription = await SubscriptionRepository(session).get_latest_for_user_channel(
             invoice.user_id,
             tariff.channel_id,
+        )
+        await write_audit_log(
+            session,
+            action="crypto_invoice_duplicate",
+            target_user_id=invoice.user_id,
+            payload={
+                "crypto_invoice_id": invoice.id,
+                "external_id": invoice.external_id,
+                "existing_payment_id": existing_payment.id,
+            },
         )
         return CryptoInvoiceSyncResult(
             invoice=invoice,
@@ -361,6 +396,43 @@ async def sync_crypto_invoice(
             "amount": str(remote.amount),
         },
     )
+    await write_audit_log(
+        session,
+        action="crypto_invoice_paid",
+        target_user_id=invoice.user_id,
+        payload={
+            "crypto_invoice_id": invoice.id,
+            "external_id": invoice.external_id,
+            "payment_id": payment.id,
+            "asset": remote.asset,
+            "amount": str(remote.amount),
+        },
+    )
+    await write_audit_log(
+        session,
+        action="crypto_subscription_activated",
+        target_user_id=invoice.user_id,
+        payload={
+            "crypto_invoice_id": invoice.id,
+            "payment_id": payment.id,
+            "subscription_id": subscription_change.subscription.id,
+            "is_extension": subscription_change.is_extension,
+        },
+    )
+    logger.info(
+        "Processed Crypto Pay payment %s for invoice %s.",
+        payment.id,
+        invoice.id,
+        extra={
+            "event_name": EVENT_PAYMENT_CRYPTO_PAID,
+            "user_id": invoice.user_id,
+            "tariff_id": tariff.id,
+            "payment_id": payment.id,
+            "subscription_id": subscription_change.subscription.id,
+            "crypto_invoice_id": invoice.id,
+            "provider": CRYPTO_PAY_PROVIDER,
+        },
+    )
     return CryptoInvoiceSyncResult(
         invoice=invoice,
         payment=payment,
@@ -369,7 +441,6 @@ async def sync_crypto_invoice(
         is_paid=True,
         is_extension=subscription_change.is_extension,
     )
-
 
 async def reconcile_active_crypto_invoices(
     session: AsyncSession,
@@ -394,25 +465,46 @@ async def reconcile_active_crypto_invoices(
     client_instance = client or CryptoPayHTTPClient.from_settings(settings)
 
     for invoice in invoices:
-        tariff = await TariffRepository(session).get_by_id(invoice.tariff_id)
-        if tariff is None:
+        try:
+            tariff = await TariffRepository(session).get_by_id(invoice.tariff_id)
+            if tariff is None:
+                raise CryptoPayError(
+                    f"Tariff {invoice.tariff_id} not found for crypto invoice {invoice.external_id}."
+                )
+            result = await sync_crypto_invoice(
+                session,
+                settings,
+                invoice=invoice,
+                tariff=tariff,
+                client=client_instance,
+                now=current_time,
+            )
+        except Exception as exc:
+            await write_audit_log(
+                session,
+                action="crypto_reconcile_error",
+                target_user_id=invoice.user_id,
+                payload={
+                    "crypto_invoice_id": invoice.id,
+                    "external_id": invoice.external_id,
+                    "error": f"{exc.__class__.__name__}: {exc}",
+                },
+            )
+            logger.warning(
+                "Crypto reconciliation failed for invoice %s: %s: %s",
+                invoice.external_id,
+                exc.__class__.__name__,
+                exc,
+            )
             continue
-        result = await sync_crypto_invoice(
-            session,
-            settings,
-            invoice=invoice,
-            tariff=tariff,
-            client=client_instance,
-            now=current_time,
-        )
+
         processed += 1
         if result.is_paid and not result.is_duplicate:
             paid += 1
         if result.invoice.status == "expired":
             expired += 1
 
-    if processed:
-        await session.commit()
+    await session.commit()
 
     return CryptoReconciliationResult(
         processed_count=processed,
@@ -420,7 +512,6 @@ async def reconcile_active_crypto_invoices(
         expired_count=expired,
         active_invoice_count=sum(1 for invoice in invoices if invoice.status == "active"),
     )
-
 
 async def process_crypto_pay_webhook_update(
     session: AsyncSession,
@@ -532,3 +623,4 @@ def _stringify_payload_value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+

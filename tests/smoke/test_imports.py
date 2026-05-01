@@ -8,8 +8,14 @@ def test_modules_import() -> None:
     from app.db.models import Channel, Payment, Subscription, Tariff, User
     from app.logging_config import configure_logging
     from app.main import main
+    from app.services.web_auth import validate_telegram_webapp_init_data
+    from app.webapp import register_webapp_routes
+    from app.webhook.server import build_webhook_app
 
     assert build_dispatcher is not None
+    assert build_webhook_app is not None
+    assert register_webapp_routes is not None
+    assert validate_telegram_webapp_init_data is not None
     assert configure_logging is not None
     assert main is not None
     assert Settings is not None

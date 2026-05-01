@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+﻿# ruff: noqa: E501
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -65,7 +65,7 @@ async def session() -> AsyncIterator[AsyncSession]:
 async def seeded_records(session: AsyncSession) -> tuple[Channel, Tariff]:
     channel = Channel(
         telegram_chat_id=-1001234567890,
-        title="\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043a\u0430\u043d\u0430\u043b",
+        title="Основной канал",
         username="demo_channel",
         invite_users_permission=True,
         ban_users_permission=True,
@@ -96,12 +96,12 @@ async def test_channels_index_renders_existing_channel(
     await channels_index(callback, session)
 
     text, markup = callback.message.edit_calls[0]
-    assert "\u041a\u0430\u043d\u0430\u043b\u044b" in text
-    assert "\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043a\u0430\u043d\u0430\u043b" in text
+    assert "Каналы" in text
+    assert "Основной канал" in text
     assert _flatten_button_texts(markup) == [
-        "\u2705 \u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043a\u0430\u043d\u0430\u043b",
-        "\u2795 \u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043a\u0430\u043d\u0430\u043b",
-        "\U0001f3e0 \u0410\u0434\u043c\u0438\u043d-\u043f\u0430\u043d\u0435\u043b\u044c",
+        "✅ Основной канал",
+        "➕ Добавить канал",
+        "🏠 Админ-панель",
     ]
 
 
@@ -115,13 +115,13 @@ async def test_channel_detail_renders_actions(
     await channel_detail(callback, session)
 
     text, markup = callback.message.edit_calls[0]
-    assert f"\u041a\u0430\u043d\u0430\u043b #{channel.id}" in text
+    assert f"Канал #{channel.id}" in text
     assert _flatten_button_texts(markup) == [
-        "\u270f\ufe0f \u041f\u0435\u0440\u0435\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u0442\u044c",
-        "\u23f8 \u0412\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u044c",
-        "\U0001f504 \u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0443",
-        "\u2b05\ufe0f \u041d\u0430\u0437\u0430\u0434",
-        "\U0001f3e0 \u0410\u0434\u043c\u0438\u043d-\u043f\u0430\u043d\u0435\u043b\u044c",
+        "✏️ Переименовать",
+        "⏸ Выключить",
+        "🔄 Обновить проверку",
+        "⬅️ Назад",
+        "🏠 Админ-панель",
     ]
 
 
@@ -134,12 +134,12 @@ async def test_tariffs_index_renders_existing_tariff(
     await tariffs_index(callback, session)
 
     text, markup = callback.message.edit_calls[0]
-    assert "\u0422\u0430\u0440\u0438\u0444\u044b" in text
+    assert "Тарифы" in text
     assert "VIP 30" in text
     assert _flatten_button_texts(markup) == [
-        "\u2705 VIP 30",
-        "\u2795 \u0421\u043e\u0437\u0434\u0430\u0442\u044c \u0442\u0430\u0440\u0438\u0444",
-        "\U0001f3e0 \u0410\u0434\u043c\u0438\u043d-\u043f\u0430\u043d\u0435\u043b\u044c",
+        "✅ VIP 30",
+        "➕ Создать тариф",
+        "🏠 Админ-панель",
     ]
 
 
@@ -153,15 +153,19 @@ async def test_tariff_detail_renders_actions(
     await tariff_detail(callback, session)
 
     text, markup = callback.message.edit_calls[0]
-    assert f"\u0422\u0430\u0440\u0438\u0444 #{tariff.id}" in text
+    assert f"Тариф #{tariff.id}" in text
     assert _flatten_button_texts(markup) == [
-        "\u270f\ufe0f \u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435",
-        "\U0001f4b3 \u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c \u0446\u0435\u043d\u0443",
-        "\U0001f4c5 \u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c \u0434\u043b\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c",
-        "\U0001f4e3 \u0421\u043c\u0435\u043d\u0438\u0442\u044c \u043a\u0430\u043d\u0430\u043b",
-        "\u2195\ufe0f \u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c \u0441\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u043a\u0443",
-        "\u23f8 \u0412\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u044c",
-        "\U0001f5c4 \u0410\u0440\u0445\u0438\u0432\u0438\u0440\u043e\u0432\u0430\u0442\u044c",
-        "\u2b05\ufe0f \u041d\u0430\u0437\u0430\u0434",
-        "\U0001f3e0 \u0410\u0434\u043c\u0438\u043d-\u043f\u0430\u043d\u0435\u043b\u044c",
+        "✏️ Изменить название",
+        "💳 Изменить цену",
+        "📅 Изменить длительность",
+        "📣 Сменить канал",
+        "↕️ Изменить сортировку",
+        "🏷 Изменить бейдж",
+        "🧪 Trial: ВЫКЛ",
+        "♾ Lifetime: ВЫКЛ",
+        "⏸ Выключить",
+        "👁 Превью как пользователь",
+        "🗄 Архивировать",
+        "⬅️ Назад",
+        "🏠 Админ-панель",
     ]

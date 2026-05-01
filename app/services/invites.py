@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import InviteLink, Subscription
 from app.db.repositories.invite_links import InviteLinkRepository
 from app.db.repositories.subscriptions import SubscriptionRepository
+from app.services.observability import EVENT_INVITE_CREATED
 from app.utils.datetime import ensure_aware_utc, utcnow
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,18 @@ async def issue_subscription_invite_link(
         invite_link=invite_url,
         expire_at=stored_expire_at,
         member_limit=member_limit,
+    )
+    logger.info(
+        "Issued invite link record %s for subscription %s.",
+        record.id,
+        subscription.id,
+        extra={
+            "event_name": EVENT_INVITE_CREATED,
+            "user_id": user_id,
+            "subscription_id": subscription.id,
+            "channel_id": subscription.channel_id,
+            "invite_link_id": record.id,
+        },
     )
     return InviteLinkGrant(
         invite=record,

@@ -14,20 +14,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.assets import get_banner_path
 from app.bot.keyboards.user import (
     user_main_menu_keyboard,
-    user_profile_keyboard,
     user_purchase_prompt_keyboard,
-    user_section_keyboard,
     user_subscription_keyboard,
 )
 from app.bot.rendering import render_section
+from app.bot.routers.user.support import render_support_home
 from app.config import Settings
 from app.db.models import Subscription, User
-from app.db.repositories.payments import PaymentRepository
 from app.db.repositories.subscriptions import SubscriptionRepository
 from app.db.repositories.users import UserRepository
+from app.services.admin_roles import is_admin_role, resolve_role_from_user
 from app.services.referral_service import (
     bind_referrer_for_user,
-    build_profile_referral_block,
     render_referral_status_message,
 )
 from app.services.texts import render_text
@@ -70,13 +68,12 @@ def _is_admin(
     settings: Settings | None,
     user: User | None,
 ) -> bool:
-    if user is not None and user.is_admin:
-        return True
-    return (
-        telegram_user_id is not None
-        and settings is not None
-        and telegram_user_id in settings.admin_ids_set
+    role = resolve_role_from_user(
+        user,
+        telegram_user_id=telegram_user_id,
+        settings=settings,
     )
+    return is_admin_role(role)
 
 
 async def _load_db_user(session: AsyncSession | None, telegram_user_id: int | None) -> User | None:
@@ -165,77 +162,6 @@ async def _render_start_text(
     if referral_message:
         text += f"\n\n{referral_message}"
     return text
-
-
-async def _render_profile_text(
-    session: AsyncSession | None,
-    *,
-    telegram_user: TelegramUser | None,
-    user: User | None,
-    timezone: str,
-) -> str:
-    active_subscriptions = await _load_active_subscriptions(session, user)
-    latest_expires_at = max(
-        (subscription.expires_at for subscription in active_subscriptions), default=None
-    )
-    purchases_count = 0
-    total_paid = 0
-    rewarded_referrals_count = 0
-    pending_reward_days = 0
-    referral_code = None
-    if session is not None and user is not None:
-        payment_repository = PaymentRepository(session)
-        user_repository = UserRepository(session)
-        purchases_count = await payment_repository.count_paid_for_user(user.id)
-        total_paid = await payment_repository.sum_paid_for_user(user.id)
-        rewarded_referrals_count = await user_repository.count_rewarded_referrals(user.id)
-        pending_reward_days = int(user.pending_referral_reward_days or 0)
-        referral_code = user.referral_code
-
-    subscription_status = "активна" if active_subscriptions else "не активна"
-    expires_at = (
-        format_datetime(latest_expires_at, timezone) if latest_expires_at is not None else "—"
-    )
-    username_value = (
-        getattr(user, "username", None)
-        if user is not None
-        else getattr(telegram_user, "username", None)
-    )
-    username = f"@{username_value}" if username_value else "—"
-    telegram_id = (
-        getattr(user, "telegram_id", None)
-        if user is not None
-        else getattr(telegram_user, "id", "—")
-    )
-
-    active_channels_lines = []
-    for subscription in active_subscriptions:
-        channel_name = safe_ui_text(subscription.channel.title, f"Канал #{subscription.channel_id}")
-        active_channels_lines.append(
-            f"• {escape(channel_name)} — до {format_datetime(subscription.expires_at, timezone)}"
-        )
-    active_channels_block = "\n".join(active_channels_lines) if active_channels_lines else "—"
-
-    profile_text = await _text(
-        session,
-        "profile",
-        telegram_id=telegram_id,
-        username=username,
-        subscription_status=subscription_status,
-        expires_at=expires_at,
-        purchase_count=purchases_count,
-        total_paid=total_paid,
-        active_channels_block=active_channels_block,
-    )
-    profile_text += (
-        "\n\n🎁 Рефералы\n"
-        + build_profile_referral_block(
-            referral_code=referral_code,
-            pending_reward_days=pending_reward_days,
-            rewarded_referrals_count=rewarded_referrals_count,
-        )
-    )
-    return profile_text
 
 
 async def _render_invite_picker_text(
@@ -348,38 +274,14 @@ async def user_home(
     )
 
 
-@router.callback_query(F.data == "menu:user:profile")
-@router.callback_query(F.data == "menu:user:subscription")
-async def profile_section(
+@router.callback_query(F.data == "menu:user:help")
+@router.callback_query(F.data == "menu:user:support")
+async def help_section(
     callback: CallbackQuery,
     session: AsyncSession | None = None,
     settings: Settings | None = None,
 ) -> None:
-    user = await _load_db_user(session, callback.from_user.id if callback.from_user else None)
-    timezone = settings.timezone if settings is not None else "UTC"
-    active_subscriptions = await _load_active_subscriptions(session, user)
-    await render_section(
-        callback,
-        text=await _render_profile_text(
-            session,
-            telegram_user=callback.from_user,
-            user=user,
-            timezone=timezone,
-        ),
-        reply_markup=user_profile_keyboard(has_active_subscription=bool(active_subscriptions)),
-        banner_path=get_banner_path("profile"),
-    )
-
-
-@router.callback_query(F.data == "menu:user:help")
-@router.callback_query(F.data == "menu:user:support")
-async def help_section(callback: CallbackQuery, session: AsyncSession | None = None) -> None:
-    await render_section(
-        callback,
-        text=await _text(session, "user_support"),
-        reply_markup=user_section_keyboard(),
-        banner_path=get_banner_path("help"),
-    )
+    await render_support_home(callback, session=session, settings=settings)
 
 
 @router.callback_query(F.data == "menu:user:link")
@@ -410,3 +312,8 @@ async def invite_section(
         reply_markup=user_subscription_keyboard(active_subscriptions),
         banner_path=get_banner_path("join"),
     )
+
+
+
+
+
