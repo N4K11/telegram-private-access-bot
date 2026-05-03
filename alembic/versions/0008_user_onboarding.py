@@ -15,20 +15,37 @@ branch_labels = None
 depends_on = None
 
 
+def _column_names(inspector: sa.Inspector, table_name: str) -> set[str]:
+    return {column["name"] for column in inspector.get_columns(table_name)}
+
+
 def upgrade() -> None:
-    op.add_column(
-        "users",
-        sa.Column("onboarding_step", sa.Integer(), nullable=False, server_default="0"),
-    )
-    op.add_column(
-        "users",
-        sa.Column("onboarding_completed_at", sa.DateTime(timezone=True), nullable=True),
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = _column_names(inspector, "users")
+
+    if "onboarding_step" not in columns:
+        op.add_column(
+            "users",
+            sa.Column("onboarding_step", sa.Integer(), nullable=False, server_default="0"),
+        )
+    if "onboarding_completed_at" not in columns:
+        op.add_column(
+            "users",
+            sa.Column("onboarding_completed_at", sa.DateTime(timezone=True), nullable=True),
+        )
+
     op.execute(
-        "UPDATE users SET onboarding_completed_at = COALESCE(created_at, CURRENT_TIMESTAMP)"
+        "UPDATE users SET onboarding_completed_at = COALESCE(onboarding_completed_at, created_at, CURRENT_TIMESTAMP)"
     )
 
 
 def downgrade() -> None:
-    op.drop_column("users", "onboarding_completed_at")
-    op.drop_column("users", "onboarding_step")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = _column_names(inspector, "users")
+
+    if "onboarding_completed_at" in columns:
+        op.drop_column("users", "onboarding_completed_at")
+    if "onboarding_step" in columns:
+        op.drop_column("users", "onboarding_step")

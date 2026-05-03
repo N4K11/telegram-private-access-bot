@@ -15,27 +15,47 @@ branch_labels = None
 depends_on = None
 
 
+def _column_names(inspector: sa.Inspector, table_name: str) -> set[str]:
+    return {column["name"] for column in inspector.get_columns(table_name)}
+
+
 def upgrade() -> None:
-    op.add_column(
-        "tariffs",
-        sa.Column("offer_copy", sa.String(length=160), nullable=True),
-    )
-    op.add_column(
-        "tariffs",
-        sa.Column("offer_group", sa.String(length=64), nullable=True),
-    )
-    op.add_column(
-        "tariffs",
-        sa.Column("is_featured", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
-    op.add_column(
-        "tariffs",
-        sa.Column("is_default_offer", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = _column_names(inspector, "tariffs")
+
+    if "offer_copy" not in columns:
+        op.add_column(
+            "tariffs",
+            sa.Column("offer_copy", sa.String(length=160), nullable=True),
+        )
+    if "offer_group" not in columns:
+        op.add_column(
+            "tariffs",
+            sa.Column("offer_group", sa.String(length=64), nullable=True),
+        )
+    if "is_featured" not in columns:
+        op.add_column(
+            "tariffs",
+            sa.Column("is_featured", sa.Boolean(), nullable=False, server_default=sa.false()),
+        )
+    if "is_default_offer" not in columns:
+        op.add_column(
+            "tariffs",
+            sa.Column("is_default_offer", sa.Boolean(), nullable=False, server_default=sa.false()),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("tariffs", "is_default_offer")
-    op.drop_column("tariffs", "is_featured")
-    op.drop_column("tariffs", "offer_group")
-    op.drop_column("tariffs", "offer_copy")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = _column_names(inspector, "tariffs")
+
+    if "is_default_offer" in columns:
+        op.drop_column("tariffs", "is_default_offer")
+    if "is_featured" in columns:
+        op.drop_column("tariffs", "is_featured")
+    if "offer_group" in columns:
+        op.drop_column("tariffs", "offer_group")
+    if "offer_copy" in columns:
+        op.drop_column("tariffs", "offer_copy")
