@@ -26,7 +26,11 @@ python -m compileall -q app tests alembic
 ruff check .
 pytest -q -p no:cacheprovider
 python -m alembic upgrade head
+python -m app.healthcheck
 sh "$PROJECT_ROOT/scripts/backup_db.sh" pre-deploy
 systemctl restart "$SERVICE_NAME"
 systemctl status "$SERVICE_NAME" --no-pager
+if [ "${USE_WEBHOOK:-false}" = "true" ]; then
+  bash "$PROJECT_ROOT/scripts/smoke_webhook_runtime.sh"
+fi
 journalctl -u "$SERVICE_NAME" -n 80 --no-pager

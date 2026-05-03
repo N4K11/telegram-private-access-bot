@@ -15,13 +15,10 @@ python -m app.healthcheck
 For webhook deployments, also run:
 
 ```bash
-set -a
-. ./.env
-set +a
 bash scripts/smoke_webhook_runtime.sh
 ```
 
-With `BOT_TOKEN` and `ADMIN_IDS` present, the smoke script verifies authorized Mini App auth, bootstrap, role gating and admin support/users/payments endpoints.
+The script auto-loads `.env` from the project root when present. With `BOT_TOKEN` and `ADMIN_IDS` available, it verifies authorized Mini App auth, bootstrap, role gating and admin support/users/payments endpoints.
 
 ## Docker validation
 

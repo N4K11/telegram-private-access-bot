@@ -1,6 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROJECT_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+load_project_env() {
+  local env_path="$PROJECT_ROOT/.env"
+  if [ ! -f "$env_path" ]; then
+    return
+  fi
+
+  local -a preserve_names=(
+    PUBLIC_WEBHOOK_URL
+    WEBHOOK_PATH
+    MINI_APP_PATH
+    BOT_TOKEN
+    ADMIN_IDS
+    USE_WEBHOOK
+    CRYPTO_PAY_ENABLED
+    CRYPTO_PAY_WEBHOOK_PATH
+    MINI_APP_SMOKE_USER_ID
+    MINI_APP_SMOKE_USER_NAME
+    MINI_APP_SMOKE_USER_FIRST_NAME
+    MINI_APP_SMOKE_ADMIN_ID
+    MINI_APP_SMOKE_ADMIN_NAME
+    MINI_APP_SMOKE_ADMIN_FIRST_NAME
+  )
+  local -a preset_names=()
+  local name
+  for name in "${preserve_names[@]}"; do
+    if [ "${!name+x}" = x ]; then
+      preset_names+=("$name")
+      printf -v "__smoke_preserved_$name" '%s' "${!name}"
+    fi
+  done
+
+  set -a
+  . "$env_path"
+  set +a
+
+  for name in "${preset_names[@]}"; do
+    local preserved_var="__smoke_preserved_$name"
+    printf -v "$name" '%s' "${!preserved_var}"
+    export "$name"
+    unset "$preserved_var"
+  done
+}
+
 require_var() {
   local name="$1"
   if [ -z "${!name:-}" ]; then
@@ -82,6 +128,13 @@ PY
 extract_first_ticket_id() {
   python3 -c 'import json, sys; payload = json.load(sys.stdin); items = payload.get("data", {}).get("items", []); print(items[0].get("id", "") if items else "")'
 }
+
+load_project_env
+
+if [ "${USE_WEBHOOK:-true}" != "true" ]; then
+  echo "Webhook smoke requires USE_WEBHOOK=true" >&2
+  exit 1
+fi
 
 require_var PUBLIC_WEBHOOK_URL
 require_var WEBHOOK_PATH

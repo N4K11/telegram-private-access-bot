@@ -74,12 +74,9 @@ sudo systemctl status telegram-private-access-bot
 
 ## Webhook smoke
 
-After a webhook deploy, export the runtime env and run the smoke script from the project root:
+After a webhook deploy, run the smoke script from the project root. It auto-loads `.env` when present, while explicit environment overrides still win:
 
 ```bash
-set -a
-. ./.env
-set +a
 bash scripts/smoke_webhook_runtime.sh
 ```
 
@@ -107,4 +104,4 @@ Optional overrides:
 ## Deploy script
 
 For non-container systemd deployments you can use `scripts/deploy.sh`.
-It pulls the repo, installs dependencies, runs compile/lint/tests, applies Alembic, creates a pre-deploy backup and only then restarts the service.
+It pulls the repo, installs dependencies, runs compile/lint/tests, applies Alembic, runs `python -m app.healthcheck`, creates a pre-deploy backup, restarts the service and, in webhook mode, executes the runtime smoke automatically.
