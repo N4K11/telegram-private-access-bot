@@ -68,6 +68,7 @@ sudo systemctl status telegram-private-access-bot
 - `CRYPTO_PAY_WEBHOOK_PATH` is the signed HTTP endpoint for Crypto Pay updates when `CRYPTO_PAY_ENABLED=true`.
 - `MINI_APP_PATH` serves the Telegram WebApp cabinet from the same aiohttp runtime.
 - `MINI_APP_AUTH_MAX_AGE_SECONDS` limits how long Telegram `initData` remains valid for cabinet API calls.
+- In Docker Compose mode the bot publishes WEBAPP_PORT on 127.0.0.1, so a host reverse proxy can safely proxy webhook and Mini App traffic without exposing the raw aiohttp port publicly.
 - `DELETE_WEBHOOK_ON_SHUTDOWN=true` is optional and usually useful only in controlled maintenance flows.
 - `/readyz` checks database connectivity and backup directory availability.
 

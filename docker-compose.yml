@@ -4,6 +4,8 @@ services:
     command: python -m app.main
     env_file:
       - .env
+    ports:
+      - "127.0.0.1:${WEBAPP_PORT:-8080}:${WEBAPP_PORT:-8080}"
     depends_on:
       postgres:
         condition: service_healthy
