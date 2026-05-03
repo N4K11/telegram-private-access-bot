@@ -9,6 +9,7 @@ from app.bot.assets import get_banner_path
 from app.bot.filters.admin import AdminFilter
 from app.bot.keyboards.admin import admin_main_menu_keyboard, admin_section_keyboard
 from app.bot.rendering import render_section
+from app.services.admin_home import build_admin_home_snapshot
 from app.bot.routers.common import edit_or_answer
 from app.config import Settings
 from app.services.admin_roles import (
@@ -49,10 +50,21 @@ async def _render_admin_home(
     telegram_user_id: int | None,
 ) -> None:
     role = await _resolve_admin_role(session, settings, telegram_user_id)
+    summary_text = render_text("admin_dashboard")
+    section_badges: dict[str, int] | None = None
+    if session is not None and settings is not None:
+        home_snapshot = await build_admin_home_snapshot(
+            session,
+            role=role,
+            settings=settings,
+        )
+        if home_snapshot.summary_block:
+            summary_text = f"{summary_text}\n\n{home_snapshot.summary_block}"
+        section_badges = home_snapshot.section_badges
     await render_section(
         target,
-        text=render_text("admin_dashboard"),
-        reply_markup=admin_main_menu_keyboard(role=role),
+        text=summary_text,
+        reply_markup=admin_main_menu_keyboard(role=role, section_badges=section_badges),
         banner_path=get_banner_path("admin"),
     )
 

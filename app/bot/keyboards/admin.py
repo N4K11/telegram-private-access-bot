@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -14,16 +14,29 @@ ADMIN_HOME_TEXT = "🏠 Админ-панель"
 ADMIN_USER_MENU_TEXT = "⬅️ Назад в меню пользователя"
 
 
-def admin_main_menu_keyboard(*, role: str | None = "owner") -> InlineKeyboardMarkup:
+def admin_main_menu_keyboard(
+    *,
+    role: str | None = "owner",
+    section_badges: Mapping[str, int] | None = None,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    badges = dict(section_badges or {})
     for section in allowed_admin_menu_sections(role):
+        badge_count = int(badges.get(section.key, 0) or 0)
+        text = _format_admin_section_button_text(section.button_text, badge_count=badge_count)
         builder.button(
-            text=section.button_text,
+            text=text,
             callback_data=f"menu:admin:{section.key}",
         )
     builder.button(text=ADMIN_USER_MENU_TEXT, callback_data="menu:user:home")
     builder.adjust(1)
     return builder.as_markup()
+
+
+def _format_admin_section_button_text(text: str, *, badge_count: int) -> str:
+    if badge_count <= 0:
+        return text
+    return f"{text} ({badge_count})"
 
 
 def admin_section_keyboard() -> InlineKeyboardMarkup:
