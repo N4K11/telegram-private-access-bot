@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     critical_error_webhook_url: str | None = None
 
     public_webhook_url: str | None = None
+    bot_public_username: str | None = None
     use_webhook: bool = False
     webhook_secret_token: SecretStr | None = None
     webhook_path: str = "/telegram/webhook"
@@ -104,6 +105,14 @@ class Settings(BaseSettings):
         text = str(value).strip()
         return text or None
 
+    @field_validator("bot_public_username", mode="before")
+    @classmethod
+    def normalize_optional_username(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip().lstrip("@")
+        return text or None
+
     @field_validator("webhook_path", mode="before")
     @classmethod
     def normalize_webhook_path(cls, value: object) -> str:
@@ -155,6 +164,12 @@ class Settings(BaseSettings):
     def mini_app_url(self) -> str:
         base = (self.public_webhook_url or "").rstrip("/")
         return f"{base}{self.mini_app_path}"
+
+    @property
+    def bot_public_link(self) -> str | None:
+        if not self.bot_public_username:
+            return None
+        return f"https://t.me/{self.bot_public_username}"
 
     @property
     def crypto_pay_webhook_url(self) -> str:

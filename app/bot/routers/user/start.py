@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import inspect
 import logging
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.assets import get_banner_path
 from app.bot.keyboards.user import (
     user_main_menu_keyboard,
+    user_onboarding_keyboard,
     user_purchase_prompt_keyboard,
     user_subscription_keyboard,
 )
@@ -24,12 +25,16 @@ from app.db.models import Subscription, User
 from app.db.repositories.subscriptions import SubscriptionRepository
 from app.db.repositories.users import UserRepository
 from app.services.admin_roles import is_admin_role, resolve_role_from_user
-from app.services.referral_service import (
-    bind_referrer_for_user,
-    render_referral_status_message,
+from app.services.onboarding import (
+    advance_onboarding,
+    complete_onboarding,
+    get_pending_onboarding_step,
+    render_onboarding_text,
+    skip_onboarding,
 )
+from app.services.referral_service import bind_referrer_for_user, render_referral_status_message
 from app.services.texts import render_text
-from app.utils.datetime import format_datetime
+from app.utils.datetime import ensure_aware_utc, format_datetime
 from app.utils.encoding import safe_ui_text
 
 router = Router(name="user")
@@ -103,6 +108,19 @@ async def _ensure_db_user(
     return user
 
 
+async def _load_or_ensure_user(
+    session: AsyncSession | None,
+    telegram_user: TelegramUser | None,
+    settings: Settings | None,
+) -> User | None:
+    if telegram_user is None:
+        return None
+    user = await _load_db_user(session, telegram_user.id)
+    if user is not None:
+        return user
+    return await _ensure_db_user(session, telegram_user, settings)
+
+
 async def _load_active_subscriptions(
     session: AsyncSession | None,
     user: User | None,
@@ -131,7 +149,12 @@ async def _render_subscription_status_block(
         expires_at=format_datetime(latest_expires_at, timezone),
     )
     if len(active_subscriptions) > 1:
-        status_block += f"\nАктивных каналов: {len(active_subscriptions)}"
+        status_block += (
+            "\n"
+            "\u0410\u043a\u0442\u0438\u0432\u043d\u044b\u0445 "
+            "\u043a\u0430\u043d\u0430\u043b\u043e\u0432: "
+            f"{len(active_subscriptions)}"
+        )
     return status_block
 
 
@@ -145,7 +168,7 @@ async def _render_start_text(
 ) -> str:
     first_name = safe_ui_text(
         user.first_name if user is not None else getattr(telegram_user, "first_name", None),
-        "друг",
+        "\u0434\u0440\u0443\u0433",
     )
     active_subscriptions = await _load_active_subscriptions(session, user)
     subscription_status_block = await _render_subscription_status_block(
@@ -174,11 +197,13 @@ async def _render_invite_picker_text(
     for subscription in active_subscriptions:
         channel_name = safe_ui_text(
             subscription.channel.title,
-            f"Канал #{subscription.channel_id}",
+            (
+                f"\u041a\u0430\u043d\u0430\u043b #{subscription.channel_id}"
+            ),
         )
         expires_at = format_datetime(subscription.expires_at, timezone)
         subscription_lines.append(
-            f"• {escape(channel_name)} — до {expires_at}"
+            f"\u2022 {escape(channel_name)} \u2014 \u0434\u043e {expires_at}"
         )
     subscriptions_block = "\n".join(subscription_lines)
     return await _text(
@@ -214,7 +239,87 @@ async def _maybe_process_start_referral(
     except Exception:
         await session.rollback()
         logger.exception("Failed to bind referral payload for user %s", user.id)
-        return "⚠️ Не удалось обработать реферальный код. Попробуй позже."
+        return (
+            "\u26a0\ufe0f \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c "
+            "\u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u0442\u044c "
+            "\u0440\u0435\u0444\u0435\u0440\u0430\u043b\u044c\u043d\u044b\u0439 "
+            "\u043a\u043e\u0434. "
+            "\u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439 \u043f\u043e\u0437\u0436\u0435."
+        )
+
+
+async def _render_home_section(
+    event: Message | CallbackQuery,
+    *,
+    session: AsyncSession | None,
+    settings: Settings | None,
+    telegram_user: TelegramUser | None,
+    user: User | None,
+    referral_message: str | None = None,
+) -> None:
+    await render_section(
+        event,
+        text=await _render_start_text(
+            session,
+            telegram_user=telegram_user,
+            user=user,
+            timezone=settings.timezone if settings is not None else "UTC",
+            referral_message=referral_message,
+        ),
+        reply_markup=user_main_menu_keyboard(
+            is_admin=_is_admin(
+                telegram_user.id if telegram_user is not None else None,
+                settings=settings,
+                user=user,
+            )
+        ),
+        banner_path=get_banner_path("main"),
+    )
+
+
+def _resolve_event_time(event: Message | CallbackQuery | object) -> datetime:
+    direct_time = getattr(event, "date", None)
+    if direct_time is not None:
+        return ensure_aware_utc(direct_time)
+    callback_message = getattr(event, "message", None)
+    if callback_message is not None and getattr(callback_message, "date", None) is not None:
+        return ensure_aware_utc(callback_message.date)
+    return datetime.now(UTC)
+
+
+async def _maybe_render_onboarding(
+    event: Message | CallbackQuery,
+    *,
+    session: AsyncSession | None,
+    settings: Settings | None,
+    user: User | None,
+    referral_message: str | None = None,
+) -> bool:
+    if session is None or user is None:
+        return False
+
+    completed_before = user.onboarding_completed_at
+    snapshot = await get_pending_onboarding_step(
+        session,
+        user=user,
+        at_time=_resolve_event_time(event),
+    )
+    if completed_before != user.onboarding_completed_at:
+        await session.commit()
+    if snapshot is None:
+        return False
+
+    onboarding_text = render_onboarding_text(snapshot, first_name=user.first_name)
+    if referral_message:
+        onboarding_text += f"\n\n{referral_message}"
+
+    await render_section(
+        event,
+        text=onboarding_text,
+        reply_markup=user_onboarding_keyboard(is_last=snapshot.is_last),
+        banner_path=get_banner_path("main"),
+    )
+    return True
 
 
 @router.message(CommandStart())
@@ -225,25 +330,22 @@ async def start_handler(
 ) -> None:
     user = await _ensure_db_user(session, message.from_user, settings)
     user = user or await _load_db_user(session, message.from_user.id if message.from_user else None)
-    timezone = settings.timezone if settings is not None else "UTC"
     referral_message = await _maybe_process_start_referral(message, session=session, user=user)
-    await render_section(
+    if await _maybe_render_onboarding(
         message,
-        text=await _render_start_text(
-            session,
-            telegram_user=message.from_user,
-            user=user,
-            timezone=timezone,
-            referral_message=referral_message,
-        ),
-        reply_markup=user_main_menu_keyboard(
-            is_admin=_is_admin(
-                message.from_user.id if message.from_user else None,
-                settings=settings,
-                user=user,
-            )
-        ),
-        banner_path=get_banner_path("main"),
+        session=session,
+        settings=settings,
+        user=user,
+        referral_message=referral_message,
+    ):
+        return
+    await _render_home_section(
+        message,
+        session=session,
+        settings=settings,
+        telegram_user=message.from_user,
+        user=user,
+        referral_message=referral_message,
     )
 
 
@@ -253,24 +355,106 @@ async def user_home(
     session: AsyncSession | None = None,
     settings: Settings | None = None,
 ) -> None:
-    user = await _load_db_user(session, callback.from_user.id if callback.from_user else None)
-    timezone = settings.timezone if settings is not None else "UTC"
-    await render_section(
+    user = await _load_or_ensure_user(session, callback.from_user, settings)
+    if await _maybe_render_onboarding(callback, session=session, settings=settings, user=user):
+        return
+    await _render_home_section(
         callback,
-        text=await _render_start_text(
-            session,
-            telegram_user=callback.from_user,
-            user=user,
-            timezone=timezone,
-        ),
-        reply_markup=user_main_menu_keyboard(
-            is_admin=_is_admin(
-                callback.from_user.id if callback.from_user else None,
-                settings=settings,
-                user=user,
-            )
-        ),
-        banner_path=get_banner_path("main"),
+        session=session,
+        settings=settings,
+        telegram_user=callback.from_user,
+        user=user,
+    )
+
+
+@router.callback_query(F.data == "menu:user:onboarding:next")
+async def onboarding_next(
+    callback: CallbackQuery,
+    session: AsyncSession | None = None,
+    settings: Settings | None = None,
+) -> None:
+    user = await _load_or_ensure_user(session, callback.from_user, settings)
+    if session is None or user is None:
+        await callback.answer(
+            "Onboarding "
+            "\u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d.",
+            show_alert=True,
+        )
+        return
+
+    snapshot = await advance_onboarding(
+        session,
+        user=user,
+        at_time=_resolve_event_time(callback),
+    )
+    await session.commit()
+    if snapshot is not None:
+        await render_section(
+            callback,
+            text=render_onboarding_text(snapshot, first_name=user.first_name),
+            reply_markup=user_onboarding_keyboard(is_last=snapshot.is_last),
+            banner_path=get_banner_path("main"),
+        )
+        return
+
+    await _render_home_section(
+        callback,
+        session=session,
+        settings=settings,
+        telegram_user=callback.from_user,
+        user=user,
+    )
+
+
+@router.callback_query(F.data == "menu:user:onboarding:skip")
+async def onboarding_skip(
+    callback: CallbackQuery,
+    session: AsyncSession | None = None,
+    settings: Settings | None = None,
+) -> None:
+    user = await _load_or_ensure_user(session, callback.from_user, settings)
+    if session is None or user is None:
+        await callback.answer(
+            "Onboarding "
+            "\u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d.",
+            show_alert=True,
+        )
+        return
+
+    await skip_onboarding(user=user, at_time=_resolve_event_time(callback))
+    await session.commit()
+    await _render_home_section(
+        callback,
+        session=session,
+        settings=settings,
+        telegram_user=callback.from_user,
+        user=user,
+    )
+
+
+@router.callback_query(F.data == "menu:user:onboarding:finish")
+async def onboarding_finish(
+    callback: CallbackQuery,
+    session: AsyncSession | None = None,
+    settings: Settings | None = None,
+) -> None:
+    user = await _load_or_ensure_user(session, callback.from_user, settings)
+    if session is None or user is None:
+        await callback.answer(
+            "Onboarding "
+            "\u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d.",
+            show_alert=True,
+        )
+        return
+
+    await complete_onboarding(user=user, at_time=_resolve_event_time(callback))
+    await session.commit()
+    await _render_home_section(
+        callback,
+        session=session,
+        settings=settings,
+        telegram_user=callback.from_user,
+        user=user,
     )
 
 
@@ -312,8 +496,3 @@ async def invite_section(
         reply_markup=user_subscription_keyboard(active_subscriptions),
         banner_path=get_banner_path("join"),
     )
-
-
-
-
-

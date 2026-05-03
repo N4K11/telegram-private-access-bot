@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -59,7 +59,8 @@ class SupportTicketRepository:
         with_messages: bool = True,
     ) -> SupportTicket | None:
         stmt = (
-            select(SupportTicket).execution_options(populate_existing=True)
+            select(SupportTicket)
+            .execution_options(populate_existing=True)
             .where(SupportTicket.id == ticket_id)
             .execution_options(populate_existing=True)
         )
@@ -73,7 +74,8 @@ class SupportTicketRepository:
 
     async def get_open_for_user(self, user_id: int) -> SupportTicket | None:
         result = await self._session.execute(
-            select(SupportTicket).execution_options(populate_existing=True)
+            select(SupportTicket)
+            .execution_options(populate_existing=True)
             .options(selectinload(SupportTicket.user))
             .where(SupportTicket.user_id == user_id)
             .where(SupportTicket.status == "open")
@@ -84,7 +86,8 @@ class SupportTicketRepository:
 
     async def list_for_user(self, user_id: int, *, limit: int = 10) -> list[SupportTicket]:
         result = await self._session.execute(
-            select(SupportTicket).execution_options(populate_existing=True)
+            select(SupportTicket)
+            .execution_options(populate_existing=True)
             .options(
                 selectinload(SupportTicket.user),
                 selectinload(SupportTicket.messages).selectinload(SupportMessage.sender),
@@ -113,6 +116,52 @@ class SupportTicketRepository:
             select(func.count(SupportTicket.id))
             .where(SupportTicket.user_id == user_id)
             .where(SupportTicket.created_at >= since)
+        )
+        return int(result.scalar_one() or 0)
+
+    async def count_by_status(self, status: str) -> int:
+        result = await self._session.execute(
+            select(func.count(SupportTicket.id)).where(SupportTicket.status == status)
+        )
+        return int(result.scalar_one() or 0)
+
+    async def count_open_waiting_on_admin(self) -> int:
+        result = await self._session.execute(
+            select(func.count(SupportTicket.id))
+            .where(SupportTicket.status == "open")
+            .where(SupportTicket.last_user_message_at.is_not(None))
+            .where(
+                or_(
+                    SupportTicket.last_admin_message_at.is_(None),
+                    SupportTicket.last_user_message_at > SupportTicket.last_admin_message_at,
+                )
+            )
+        )
+        return int(result.scalar_one() or 0)
+
+    async def count_open_waiting_on_user(self) -> int:
+        result = await self._session.execute(
+            select(func.count(SupportTicket.id))
+            .where(SupportTicket.status == "open")
+            .where(SupportTicket.last_admin_message_at.is_not(None))
+            .where(
+                or_(
+                    SupportTicket.last_user_message_at.is_(None),
+                    SupportTicket.last_admin_message_at >= SupportTicket.last_user_message_at,
+                )
+            )
+        )
+        return int(result.scalar_one() or 0)
+
+    async def count_stale_open(self, *, since: datetime) -> int:
+        result = await self._session.execute(
+            select(func.count(SupportTicket.id))
+            .where(
+                and_(
+                    SupportTicket.status == "open",
+                    SupportTicket.updated_at < since,
+                )
+            )
         )
         return int(result.scalar_one() or 0)
 

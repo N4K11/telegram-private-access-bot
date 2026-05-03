@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import ctypes
 import os
+import shutil
+from collections.abc import Iterator
 from contextlib import suppress
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -11,11 +14,12 @@ from app.config import get_settings
 
 TESTS_ROOT = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_ROOT.parent
-TMP_ROOT = REPO_ROOT / ".tmp" / "pytest-temp"
+TMP_ROOT = Path(os.environ.get("CODEX_TEST_TMP_ROOT") or r"D:\botproj\.tmp\pytest-temp")
 TMP_ROOT.mkdir(parents=True, exist_ok=True)
 os.environ["TMP"] = str(TMP_ROOT)
 os.environ["TEMP"] = str(TMP_ROOT)
 os.environ["TMPDIR"] = str(TMP_ROOT)
+
 
 def _preload_ssl_dlls() -> None:
     try:
@@ -52,3 +56,13 @@ def clear_settings_cache() -> None:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def workspace_tmp_path() -> Iterator[Path]:
+    path = TMP_ROOT / f"case-{uuid4().hex}"
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)

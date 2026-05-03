@@ -1,4 +1,4 @@
-﻿# ruff: noqa: E501
+# ruff: noqa: E501
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -161,6 +161,10 @@ async def test_tariff_detail_renders_actions(
         "📣 Сменить канал",
         "↕️ Изменить сортировку",
         "🏷 Изменить бейдж",
+        "📝 Короткий оффер",
+        "📚 Группа офферов",
+        "🔥 Featured: ВЫКЛ",
+        "🎯 Default: ВЫКЛ",
         "🧪 Trial: ВЫКЛ",
         "♾ Lifetime: ВЫКЛ",
         "⏸ Выключить",

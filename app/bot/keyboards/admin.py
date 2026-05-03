@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections.abc import Sequence
 
@@ -93,8 +93,14 @@ def admin_tariffs_keyboard(tariffs: Sequence[Tariff]) -> InlineKeyboardMarkup:
         else:
             status = "⏸"
         title = safe_ui_text(tariff.name, f"Тариф #{tariff.id}")
+        markers: list[str] = []
+        if getattr(tariff, "is_featured", False):
+            markers.append("🔥")
+        if getattr(tariff, "is_default_offer", False):
+            markers.append("🎯")
+        prefix = f"{' '.join(markers)} " if markers else ""
         builder.button(
-            text=f"{status} {title}",
+            text=f"{status} {prefix}{title}",
             callback_data=f"menu:admin:tariffs:view:{tariff.id}",
         )
     builder.button(text="➕ Создать тариф", callback_data="menu:admin:tariffs:create")
@@ -110,6 +116,8 @@ def admin_tariff_detail_keyboard(
     is_archived: bool,
     is_trial: bool = False,
     is_lifetime: bool = False,
+    is_featured: bool = False,
+    is_default_offer: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if not is_archived:
@@ -136,6 +144,22 @@ def admin_tariff_detail_keyboard(
         builder.button(
             text="🏷 Изменить бейдж",
             callback_data=f"menu:admin:tariffs:badge:{tariff_id}",
+        )
+        builder.button(
+            text="📝 Короткий оффер",
+            callback_data=f"menu:admin:tariffs:offer-copy:{tariff_id}",
+        )
+        builder.button(
+            text="📚 Группа офферов",
+            callback_data=f"menu:admin:tariffs:offer-group:{tariff_id}",
+        )
+        builder.button(
+            text="🔥 Featured: ВКЛ" if is_featured else "🔥 Featured: ВЫКЛ",
+            callback_data=f"menu:admin:tariffs:featured:{tariff_id}",
+        )
+        builder.button(
+            text="🎯 Default: ВКЛ" if is_default_offer else "🎯 Default: ВЫКЛ",
+            callback_data=f"menu:admin:tariffs:default:{tariff_id}",
         )
         builder.button(
             text="🧪 Trial: ВКЛ" if is_trial else "🧪 Trial: ВЫКЛ",
@@ -184,4 +208,3 @@ def admin_channel_picker_keyboard(
     builder.button(text=ADMIN_HOME_TEXT, callback_data="menu:admin:home")
     builder.adjust(1)
     return builder.as_markup()
-

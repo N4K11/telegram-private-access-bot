@@ -14,7 +14,9 @@
   - `POST WEBHOOK_PATH` for Telegram updates;
   - `GET /healthz` for liveness;
   - `GET /readyz` for readiness.
-- `app.webapp.handlers` serves the Mini App page at `MINI_APP_PATH` and strict auth APIs under `MINI_APP_PATH/api/*`.
+- `app.webapp.handlers` serves the Mini App page at `MINI_APP_PATH` and strict auth APIs under `MINI_APP_PATH/api/*`, including admin dashboard/users/payments endpoints and the Mini App channel-check action.
+- `app.services.web_cabinet` serializes the user cabinet payload: profile, grouped products, active product access, flat tariffs, recent payments, referrals, pending promos, support state and Telegram deep-link actions.
+- `app.services.web_admin_dashboard` serializes the Mini App admin dashboard, filterable users/payments payloads, safe overview cards and the live channel-check action result.
 - In webhook mode the runtime registers `PUBLIC_WEBHOOK_URL + WEBHOOK_PATH` via `setWebhook` and can optionally call `deleteWebhook` on shutdown.
 
 ## Runtime state and telemetry
@@ -25,8 +27,8 @@
 
 ## Routers
 
-- `app.bot.routers.user.start` - `/start`, referral payload `ref_*`, main menu, profile, help, invite link.
-- `app.bot.routers.user.payments` - Stars, Crypto Pay, tariffs, purchase flow and `paysupport`.
+- `app.bot.routers.user.start` - `/start`, referral payload `ref_*`, smart onboarding, main menu, profile, help and invite link.
+- `app.bot.routers.user.payments` - Stars, Crypto Pay, product picker, per-product tariffs, purchase flow and `paysupport`.
 - `app.bot.routers.user.promos` - `/promo`, promo preview text and free-days/discount promo handling.
 - `app.bot.routers.user.referrals` - `/my_referrals` and the inline referral dashboard from the profile screen.
 - `app.bot.routers.user.invites` - invite link delivery and resend.
@@ -41,6 +43,10 @@
 - `app.bot.routers.admin.support` - `/admin_support`, admin inbox, replies and ticket status changes.
 - `app.bot.routers.admin.audit` - `/admin_audit`, filterable audit viewer, event detail cards and redacted CSV export.
 - `app.services.support` - support ticket validation, rate limits, thread lifecycle and audit writes.
+- `app.services.onboarding` - first-run onboarding eligibility, progress persistence and onboarding copy rendering.
+- `app.services.content_service` - registry and safe rendering for FAQ/content pages.
+- `app.services.channel_guard_service` - background protection for active channels with deduplicated admin alerts.
+- `app.services.report_service` - scheduled daily/weekly admin KPI reports with duplicate protection.
 - `app.services.legal_texts` - registry of managed legal texts for terms, privacy, refund policy and payment support.
 - `app.services.audit` - audit write helper, filter normalization, payload redaction and CSV export for admins.
 - `app.db.repositories.support_tickets` - support ticket and support message persistence helpers.
@@ -63,12 +69,12 @@
 - `app.workers.payment_reconciler` - placeholder module for Crypto Pay reconciliation wiring.
 - `app.workers.broadcast_sender` - broadcast queue sender with isolated per-user failures and rate-limited delivery accounting.
 - `app.workers.backup_worker` - scheduled backup and retention.
-- `app.workers.scheduler` - worker orchestrator and last-maintenance telemetry.
+- `app.workers.scheduler` - worker orchestrator, `channel_guard`, `admin_reports` and last-maintenance telemetry.
 - Workers run in both polling and webhook modes.
 
 ## Persistent data
 
-- PostgreSQL: `users` (including referral codes/referred-by/reward balance), `channels`, `tariffs`, `subscriptions`, `payments`, `invite_links`, `crypto_invoices`, `audit_logs`, `text_templates`, `broadcast_*`, `backup_records`, `promo_codes` (including validity windows, first-purchase flag, per-user limit, campaign and notes), `promo_redemptions`.
+- PostgreSQL: `users` (including referral codes/referred-by/reward balance and onboarding progress), `channels`, `tariffs`, `subscriptions`, `payments`, `invite_links`, `crypto_invoices`, `audit_logs`, `text_templates`, `broadcast_*`, `backup_records`, `promo_codes` (including validity windows, first-purchase flag, per-user limit, campaign and notes), `promo_redemptions`.
 - Local backup files live in `backups/` or the directory from `BACKUP_DIRECTORY`.
 
 ## Visual assets
@@ -81,6 +87,8 @@
 
 - `.gitignore` excludes local runtime/cache/dev artifacts such as `.venv/`, `.tmp/`, `.vendor/`, `__pycache__/`, `*.pyc`, `*.db`, `backups/*` and runtime logs.
 - `tests/unit/test_repo_hygiene.py` enforces that local artifacts are not tracked and tracked source/docs do not contain token-like secrets.
+
+
 
 
 

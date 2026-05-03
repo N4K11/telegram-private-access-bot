@@ -1,4 +1,4 @@
-﻿# ruff: noqa: E501
+# ruff: noqa: E501
 from __future__ import annotations
 
 from html import escape
@@ -25,10 +25,9 @@ from app.services.texts import (
     update_text_template_body,
 )
 
-router = Router(name="admin_texts")
+router = Router(name='admin_texts')
 router.message.filter(AdminFilter(PERMISSION_TEXTS))
 router.callback_query.filter(AdminFilter(PERMISSION_TEXTS))
-
 
 
 def _callback_key(data: str | None, prefix: str) -> str | None:
@@ -37,34 +36,29 @@ def _callback_key(data: str | None, prefix: str) -> str | None:
     return data.removeprefix(prefix).strip() or None
 
 
-
 def _render_texts_overview(templates) -> str:
-    return (
-        "\u0422\u0435\u043a\u0441\u0442\u044b\n\n"
-        f"Templates: {len(templates)}"
-    )
-
+    return 'Тексты\n\n' f'Templates: {len(templates)}'
 
 
 def _render_text_detail(template) -> str:
     default_template = default_text_template(template.key)
-    state = "default" if is_default_text_body(template.key, template.body) else "edited"
-    updated_by = template.updated_by_user_id if template.updated_by_user_id is not None else "-"
+    state = 'default' if is_default_text_body(template.key, template.body) else 'edited'
+    updated_by = template.updated_by_user_id if template.updated_by_user_id is not None else '-'
     body_preview = escape(template.body)
 
     lines = [
         template.title,
-        "",
-        f"Key: <code>{escape(template.key)}</code>",
-        f"State: {state}",
+        '',
+        f'Key: <code>{escape(template.key)}</code>',
+        f'State: {state}',
         f"System: {'yes' if template.is_system else 'no'}",
-        f"Updated by: {updated_by}",
+        f'Updated by: {updated_by}',
     ]
     if default_template is not None and default_template.body != template.body:
-        lines.append("Changed from default.")
+        lines.append('Changed from default.')
 
-    lines.extend(["", "Body:", "", body_preview])
-    return "\n".join(lines)
+    lines.extend(['', 'Body:', '', body_preview])
+    return '\n'.join(lines)
 
 
 async def _actor_user_id(
@@ -77,7 +71,7 @@ async def _actor_user_id(
     return user.id if user is not None else None
 
 
-@router.callback_query(F.data == "menu:admin:texts")
+@router.callback_query(F.data == 'menu:admin:texts')
 async def texts_index(
     callback: CallbackQuery,
     session: AsyncSession,
@@ -95,16 +89,16 @@ async def texts_index(
     )
 
 
-@router.callback_query(F.data.startswith("menu:admin:texts:view:"))
+@router.callback_query(F.data.startswith('menu:admin:texts:view:'))
 async def text_detail(callback: CallbackQuery, session: AsyncSession) -> None:
-    key = _callback_key(callback.data, "menu:admin:texts:view:")
+    key = _callback_key(callback.data, 'menu:admin:texts:view:')
     if key is None:
         await callback.answer()
         return
 
     template = await get_text_template_record(session, key)
     if template is None:
-        await callback.answer("Template not found.", show_alert=True)
+        await callback.answer('Template not found.', show_alert=True)
         return
 
     await session.commit()
@@ -115,40 +109,44 @@ async def text_detail(callback: CallbackQuery, session: AsyncSession) -> None:
     )
 
 
-@router.callback_query(F.data.startswith("menu:admin:texts:edit:"))
+@router.callback_query(F.data.startswith('menu:admin:texts:edit:'))
 async def start_text_edit(
     callback: CallbackQuery,
     session: AsyncSession,
     state: FSMContext,
 ) -> None:
-    key = _callback_key(callback.data, "menu:admin:texts:edit:")
+    key = _callback_key(callback.data, 'menu:admin:texts:edit:')
     if key is None:
         await callback.answer()
         return
 
     template = await get_text_template_record(session, key)
     if template is None:
-        await callback.answer("Template not found.", show_alert=True)
+        await callback.answer('Template not found.', show_alert=True)
         return
 
     await session.commit()
     await state.clear()
     await state.set_state(AdminTextEditor.waiting_for_value)
-    await state.update_data(text_template_key=template.key)
+    await state.update_data(
+        text_template_key=template.key,
+        text_template_origin_slug=None,
+        text_template_return_callback=None,
+    )
     await edit_or_answer(
         callback,
         text=(
-            f"\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435: {escape(template.title)}\n\n"
-            f"Key: <code>{escape(template.key)}</code>\n\n"
-            "Send the new body in one message."
+            f'Редактирование: {escape(template.title)}\n\n'
+            f'Key: <code>{escape(template.key)}</code>\n\n'
+            'Send the new body in one message.'
         ),
-        reply_markup=admin_form_keyboard(back_callback=f"menu:admin:texts:view:{template.key}"),
+        reply_markup=admin_form_keyboard(back_callback=f'menu:admin:texts:view:{template.key}'),
     )
 
 
-@router.callback_query(F.data.startswith("menu:admin:texts:reset:"))
+@router.callback_query(F.data.startswith('menu:admin:texts:reset:'))
 async def reset_text(callback: CallbackQuery, session: AsyncSession) -> None:
-    key = _callback_key(callback.data, "menu:admin:texts:reset:")
+    key = _callback_key(callback.data, 'menu:admin:texts:reset:')
     if key is None:
         await callback.answer()
         return
@@ -181,14 +179,12 @@ async def receive_text_value(
     state: FSMContext,
     session: AsyncSession,
 ) -> None:
-    body = message.text or ""
+    body = message.text or ''
     data = await state.get_data()
-    key = data.get("text_template_key")
+    key = data.get('text_template_key')
     if not isinstance(key, str) or not key:
         await state.clear()
-        await message.answer(
-            "\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u0440\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f \u043f\u043e\u0442\u0435\u0440\u044f\u043d."
-        )
+        await message.answer('Контекст редактирования потерян.')
         return
 
     try:
@@ -204,12 +200,29 @@ async def receive_text_value(
         await session.commit()
     except TextTemplateValidationError as exc:
         await session.rollback()
-        await message.answer(f"{exc}\n\nTry again.")
+        await message.answer(f'{exc}\n\nTry again.')
         return
 
     await state.clear()
+    origin_slug = data.get('text_template_origin_slug')
+    if isinstance(origin_slug, str) and origin_slug:
+        from app.bot.keyboards.admin_content import admin_content_detail_keyboard
+
+        await message.answer(
+            'Шаблон обновлён.\n\n' + _render_text_detail(template),
+            reply_markup=admin_content_detail_keyboard(origin_slug, template.key),
+        )
+        return
+
+    return_callback = data.get('text_template_return_callback')
+    if isinstance(return_callback, str) and return_callback:
+        await message.answer(
+            'Шаблон обновлён.\n\n' + _render_text_detail(template),
+            reply_markup=admin_form_keyboard(back_callback=return_callback),
+        )
+        return
+
     await message.answer(
-        "\u0428\u0430\u0431\u043b\u043e\u043d \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d.\n\n" + _render_text_detail(template),
+        'Шаблон обновлён.\n\n' + _render_text_detail(template),
         reply_markup=admin_text_detail_keyboard(template.key),
     )
-

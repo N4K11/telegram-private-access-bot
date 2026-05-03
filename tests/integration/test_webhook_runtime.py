@@ -14,7 +14,7 @@ from app.webhook.server import build_webhook_app
 
 
 @pytest_asyncio.fixture
-async def webhook_runtime(tmp_path: Path):
+async def webhook_runtime(workspace_tmp_path: Path):
     seen_messages: list[str] = []
     router = Router()
 
@@ -29,7 +29,7 @@ async def webhook_runtime(tmp_path: Path):
             "bot_token": "123456789:token",
             "admin_ids": [1],
             "database_url": "sqlite+aiosqlite:///:memory:",
-            "backup_directory": str(tmp_path / "backups"),
+            "backup_directory": str(workspace_tmp_path / "backups"),
             "use_webhook": True,
             "public_webhook_url": "https://example.com",
             "webhook_secret_token": "secret-token",

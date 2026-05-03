@@ -75,7 +75,7 @@ async def session() -> AsyncIterator[tuple[AsyncSession, int]]:
 
         channel = Channel(
             telegram_chat_id=-1001234567890,
-            title="пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ",
+            title="�������� �����",
             invite_users_permission=True,
             ban_users_permission=True,
             is_active=True,

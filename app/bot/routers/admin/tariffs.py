@@ -1,4 +1,4 @@
-﻿# ruff: noqa: E501
+# ruff: noqa: E501
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -22,6 +22,7 @@ from app.db.models import Channel, Tariff
 from app.db.repositories.channels import ChannelRepository
 from app.db.repositories.tariffs import TariffRepository
 from app.services.admin_roles import PERMISSION_TARIFFS
+from app.services.product_service import build_offer_details, pick_default_tariff
 from app.services.tariffs import (
     TariffValidationError,
     effective_crypto_asset,
@@ -31,6 +32,8 @@ from app.services.tariffs import (
     tariff_badge_label,
     tariff_duration_label,
     validate_optional_badge,
+    validate_optional_offer_copy,
+    validate_optional_offer_group,
     validate_tariff_name,
     validate_tariff_payload,
 )
@@ -94,14 +97,30 @@ def _render_tariff_detail(tariff: Tariff) -> str:
     crypto_asset = effective_crypto_asset(tariff, ["USDT"]) or "—"
     crypto_line = "—" if crypto_price is None else f"{crypto_price} {crypto_asset}"
     description = escape(tariff.description) if tariff.description else "—"
+    offer_copy = escape(tariff.offer_copy) if getattr(tariff, "offer_copy", None) else "—"
+    offer_group = escape(tariff.offer_group) if getattr(tariff, "offer_group", None) else "—"
+    baseline_tariff = tariff
+    offer_details = build_offer_details(tariff, baseline_tariff=baseline_tariff)
+    markers: list[str] = []
+    if offer_details.is_featured:
+        markers.append("🔥 featured")
+    if offer_details.is_default_offer:
+        markers.append("🎯 default")
+    marker_line = ", ".join(markers) if markers else "—"
+    savings_line = offer_details.savings_label or "—"
 
     return (
         f"Тариф #{tariff.id}\n\n"
         f"Название: {escape(tariff.name)}\n"
         f"Бейдж: {escape(badge)}\n"
         f"Описание: {description}\n"
+        f"Короткий оффер: {offer_copy}\n"
+        f"Группа офферов: {offer_group}\n"
+        f"Offer flags: {marker_line}\n"
         f"Цена: {tariff.price_stars} Stars\n"
         f"Crypto Pay: {crypto_line}\n"
+        f"Цена в день: {offer_details.price_per_day_label}\n"
+        f"Выгода: {savings_line}\n"
         f"Длительность: {tariff_duration_label(tariff)}\n"
         f"Trial: {'да' if tariff.is_trial else 'нет'}\n"
         f"Lifetime: {'да' if tariff.is_lifetime else 'нет'}\n"
@@ -116,19 +135,43 @@ def _render_user_preview(tariff: Tariff) -> str:
     badge = tariff_badge_label(tariff)
     badge_line = f"🏷 {escape(badge)}\n" if badge else ""
     description_line = f"📝 {escape(tariff.description)}\n" if tariff.description else ""
+    offer_copy_line = (
+        f"🔥 {escape(tariff.offer_copy)}\n"
+        if getattr(tariff, "offer_copy", None)
+        else ""
+    )
+    offer_group_line = (
+        f"📚 Пакет: {escape(tariff.offer_group)}\n"
+        if getattr(tariff, "offer_group", None)
+        else ""
+    )
     crypto_price = effective_crypto_price(tariff)
     crypto_asset = effective_crypto_asset(tariff, ["USDT"]) or "—"
     crypto_line = ""
     if crypto_price is not None:
         crypto_line = f"₿ Crypto Pay: {crypto_price} {crypto_asset}\n"
+    baseline_tariff = tariff
+    offer_details = build_offer_details(tariff, baseline_tariff=baseline_tariff)
+    compare_line = f"📈 {offer_details.savings_label}\n" if offer_details.savings_label else ""
+    markers: list[str] = []
+    if offer_details.is_featured:
+        markers.append("🔥 Хит")
+    if offer_details.is_default_offer:
+        markers.append("🎯 Рекомендуем")
+    marker_line = f"{' • '.join(markers)}\n" if markers else ""
     return (
         "Превью как пользователь\n\n"
         f"💎 {escape(tariff.name)}\n"
+        f"{marker_line}"
         f"{badge_line}"
         f"⏳ Срок: {tariff_duration_label(tariff)}\n"
         f"⭐ Цена: {tariff.price_stars} Stars\n"
+        f"📉 Цена в день: {offer_details.price_per_day_label}\n"
         f"📣 Канал: {escape(tariff.channel.title)}\n"
+        f"{offer_group_line}"
+        f"{offer_copy_line}"
         f"{description_line}"
+        f"{compare_line}"
         f"{crypto_line}"
     ).rstrip()
 
@@ -141,7 +184,6 @@ def _render_channel_picker_prompt(channels: list[Channel]) -> str:
         )
     return "Выберите канал для тарифа."
 
-
 async def _show_tariff_detail(target: Message | CallbackQuery, tariff: Tariff) -> None:
     await edit_or_answer(
         target,
@@ -152,6 +194,8 @@ async def _show_tariff_detail(target: Message | CallbackQuery, tariff: Tariff) -
             is_archived=tariff.archived_at is not None,
             is_trial=tariff.is_trial,
             is_lifetime=tariff.is_lifetime,
+            is_featured=tariff.is_featured,
+            is_default_offer=tariff.is_default_offer,
         ),
     )
 
@@ -550,6 +594,8 @@ async def pick_tariff_channel(
                     is_archived=tariff.archived_at is not None,
                     is_trial=tariff.is_trial,
                     is_lifetime=tariff.is_lifetime,
+            is_featured=tariff.is_featured,
+            is_default_offer=tariff.is_default_offer,
                 ),
             )
             return
@@ -682,6 +728,8 @@ async def _update_tariff_field_from_message(
             is_archived=tariff.archived_at is not None,
             is_trial=tariff.is_trial,
             is_lifetime=tariff.is_lifetime,
+            is_featured=tariff.is_featured,
+            is_default_offer=tariff.is_default_offer,
         ),
     )
 
@@ -761,3 +809,156 @@ async def receive_new_tariff_badge(
     )
 
 
+
+
+def _clearable_optional_text(raw_value: str) -> str:
+    value = (raw_value or "").strip()
+    if value in {"-", "—", "none", "clear"}:
+        return ""
+    return raw_value or ""
+
+
+async def _set_channel_offer_flag(
+    session: AsyncSession,
+    *,
+    tariff: Tariff,
+    field_name: str,
+) -> None:
+    repository = TariffRepository(session)
+    siblings = await repository.list_for_channel(tariff.channel_id)
+    next_value = not bool(getattr(tariff, field_name))
+    if next_value:
+        for sibling in siblings:
+            setattr(sibling, field_name, sibling.id == tariff.id)
+    else:
+        setattr(tariff, field_name, False)
+
+
+@router.callback_query(F.data.startswith("menu:admin:tariffs:offer-copy:"))
+async def start_tariff_offer_copy_edit(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    tariff_id = _callback_entity_id(callback.data)
+    if tariff_id is None:
+        await callback.answer()
+        return
+    tariff = await TariffRepository(session).get_by_id(tariff_id)
+    if tariff is None:
+        await callback.answer("Тариф не найден.")
+        return
+    await state.clear()
+    await state.set_state(AdminTariffForm.waiting_for_new_offer_copy)
+    await state.update_data(tariff_action="offer_copy", tariff_id=tariff.id)
+    current_value = escape(tariff.offer_copy) if tariff.offer_copy else "—"
+    await edit_or_answer(
+        callback,
+        text=(
+            f"Изменение короткого оффера тарифа #{tariff.id}\n\n"
+            f"Текущее значение: {current_value}\n\n"
+            "Отправьте новую короткую подпись или «-», чтобы очистить поле."
+        ),
+        reply_markup=admin_form_keyboard(back_callback=f"menu:admin:tariffs:view:{tariff.id}"),
+    )
+
+
+@router.callback_query(F.data.startswith("menu:admin:tariffs:offer-group:"))
+async def start_tariff_offer_group_edit(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    tariff_id = _callback_entity_id(callback.data)
+    if tariff_id is None:
+        await callback.answer()
+        return
+    tariff = await TariffRepository(session).get_by_id(tariff_id)
+    if tariff is None:
+        await callback.answer("Тариф не найден.")
+        return
+    await state.clear()
+    await state.set_state(AdminTariffForm.waiting_for_new_offer_group)
+    await state.update_data(tariff_action="offer_group", tariff_id=tariff.id)
+    current_value = escape(tariff.offer_group) if tariff.offer_group else "—"
+    await edit_or_answer(
+        callback,
+        text=(
+            f"Изменение группы офферов тарифа #{tariff.id}\n\n"
+            f"Текущее значение: {current_value}\n\n"
+            "Отправьте новую группу или «-», чтобы убрать группировку."
+        ),
+        reply_markup=admin_form_keyboard(back_callback=f"menu:admin:tariffs:view:{tariff.id}"),
+    )
+
+
+@router.callback_query(F.data.startswith("menu:admin:tariffs:featured:"))
+async def toggle_featured_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
+    tariff_id = _callback_entity_id(callback.data)
+    if tariff_id is None:
+        await callback.answer()
+        return
+    repository = TariffRepository(session)
+    tariff = await repository.get_by_id(tariff_id)
+    if tariff is None:
+        await callback.answer("Тариф не найден.")
+        return
+    if tariff.archived_at is not None:
+        await callback.answer("Архивный тариф нельзя редактировать.")
+        return
+    await _set_channel_offer_flag(session, tariff=tariff, field_name="is_featured")
+    await session.commit()
+    refreshed = await repository.get_by_id(tariff.id)
+    if refreshed is not None:
+        await _show_tariff_detail(callback, refreshed)
+
+
+@router.callback_query(F.data.startswith("menu:admin:tariffs:default:"))
+async def toggle_default_tariff(callback: CallbackQuery, session: AsyncSession) -> None:
+    tariff_id = _callback_entity_id(callback.data)
+    if tariff_id is None:
+        await callback.answer()
+        return
+    repository = TariffRepository(session)
+    tariff = await repository.get_by_id(tariff_id)
+    if tariff is None:
+        await callback.answer("Тариф не найден.")
+        return
+    if tariff.archived_at is not None:
+        await callback.answer("Архивный тариф нельзя редактировать.")
+        return
+    await _set_channel_offer_flag(session, tariff=tariff, field_name="is_default_offer")
+    await session.commit()
+    refreshed = await repository.get_by_id(tariff.id)
+    if refreshed is not None:
+        await _show_tariff_detail(callback, refreshed)
+
+
+@router.message(AdminTariffForm.waiting_for_new_offer_copy)
+async def receive_new_tariff_offer_copy(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    await _update_tariff_field_from_message(
+        message=message,
+        state=state,
+        session=session,
+        field_name="offer_copy",
+        parser=lambda raw: validate_optional_offer_copy(_clearable_optional_text(raw)),
+    )
+
+
+@router.message(AdminTariffForm.waiting_for_new_offer_group)
+async def receive_new_tariff_offer_group(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    await _update_tariff_field_from_message(
+        message=message,
+        state=state,
+        session=session,
+        field_name="offer_group",
+        parser=lambda raw: validate_optional_offer_group(_clearable_optional_text(raw)),
+    )

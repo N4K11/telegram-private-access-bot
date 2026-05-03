@@ -18,6 +18,7 @@ def admin_texts_keyboard(templates: Sequence[TextTemplate]) -> InlineKeyboardMar
             text=f"{status} {template.title}",
             callback_data=f"menu:admin:texts:view:{template.key}",
         )
+    builder.button(text="📚 Content / FAQ CMS", callback_data="menu:admin:content")
     builder.button(text=default_text_body("admin_button_home"), callback_data="menu:admin:home")
     builder.adjust(1)
     return builder.as_markup()
@@ -34,6 +35,7 @@ def admin_text_detail_keyboard(key: str) -> InlineKeyboardMarkup:
         callback_data=f"menu:admin:texts:reset:{key}",
     )
     builder.button(text=default_text_body("admin_button_back"), callback_data="menu:admin:texts")
+    builder.button(text="📚 Content / FAQ CMS", callback_data="menu:admin:content")
     builder.button(text=default_text_body("admin_button_home"), callback_data="menu:admin:home")
     builder.adjust(1)
     return builder.as_markup()

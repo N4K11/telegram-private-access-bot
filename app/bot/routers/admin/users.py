@@ -548,7 +548,7 @@ async def start_direct_message(
     user_id, filter_key, page = context
     profile = await _load_profile(session, user_id=user_id)
     if profile is None:
-        await callback.answer("Пользователь не найден.", show_alert=True)
+        await callback.answer("\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d.", show_alert=True)
         return
 
     await state.clear()
@@ -557,8 +557,8 @@ async def start_direct_message(
     await edit_or_answer(
         callback,
         text=(
-            f"Личное сообщение пользователю {escape(_format_user_name(profile.user))}\n\n"
-            "Р С›РЎвЂљР С—РЎР‚Р В°Р Р†РЎРЉРЎвЂљР Вµ РЎРѓР В»Р ВµР Т‘РЎС“РЎР‹РЎвЂ°Р С‘Р в„– РЎвЂљР ВµР С”РЎРѓРЎвЂљ Р С•Р Т‘Р Р…Р С‘Р С РЎРѓР С•Р С•Р В±РЎвЂ°Р ВµР Р…Р С‘Р ВµР С."
+            f"\u041b\u0438\u0447\u043d\u043e\u0435 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044e {escape(_format_user_name(profile.user))}\n\n"
+            "\u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 \u0442\u0435\u043a\u0441\u0442 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f \u043e\u0434\u043d\u0438\u043c \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u043c \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435\u043c."
         ),
         reply_markup=admin_form_keyboard(
             back_callback=f"menu:admin:users:view:{user_id}:{filter_key}:{page}"
@@ -579,7 +579,7 @@ async def receive_direct_message(
         return
 
     if message.text is None or not message.text.strip():
-        await message.answer("Р СњРЎС“Р В¶Р Р…Р С• Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С‘РЎвЂљРЎРЉ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р Р†Р С•Р Вµ РЎРѓР С•Р С•Р В±РЎвЂ°Р ВµР Р…Р С‘Р Вµ Р В±Р ВµР В· Р С—РЎС“РЎРѓРЎвЂљР С•Р С–Р С• РЎРѓР С•Р Т‘Р ВµРЎР‚Р В¶Р С‘Р СР С•Р С–Р С•.")
+        await message.answer("\u041d\u0443\u0436\u043d\u043e \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0442\u0435\u043a\u0441\u0442\u043e\u0432\u043e\u0435 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u0431\u0435\u0437 \u0432\u043b\u043e\u0436\u0435\u043d\u0438\u0439.")
         return
 
     data = await state.get_data()
@@ -588,13 +588,13 @@ async def receive_direct_message(
     page = int(data.get("page", 1))
     if not isinstance(user_id, int):
         await state.clear()
-        await message.answer("Контекст отправки сообщения потерян. Откройте профиль заново.")
+        await message.answer("\u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f \u043f\u043e\u0442\u0435\u0440\u044f\u043d. \u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u043f\u0440\u043e\u0444\u0438\u043b\u044c \u0437\u0430\u043d\u043e\u0432\u043e.")
         return
 
     user = await UserRepository(session).get_by_id(user_id)
     if user is None:
         await state.clear()
-        await message.answer("Пользователь не найден.")
+        await message.answer("\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d.")
         return
 
     try:
@@ -602,7 +602,7 @@ async def receive_direct_message(
     except Exception:
         logger.exception("Failed to send admin direct message to user %s", user.telegram_id)
         await message.answer(
-            "Р СњР Вµ РЎС“Р Т‘Р В°Р В»Р С•РЎРѓРЎРЉ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С‘РЎвЂљРЎРЉ РЎРѓР С•Р С•Р В±РЎвЂ°Р ВµР Р…Р С‘Р Вµ Р С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°РЎвЂљР ВµР В»РЎР‹. Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В·."
+            "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044e. \u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e, \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043b \u0431\u043e\u0442\u0430."
         )
         return
 
@@ -627,9 +627,8 @@ async def receive_direct_message(
         user_id=user.id,
         filter_key=filter_key,
         page=page,
-        notice="Сообщение отправлено.",
+        notice="\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e.",
     )
-
 
 @router.callback_query(F.data.startswith("menu:admin:users:grant:"))
 async def start_manual_grant(
@@ -705,7 +704,7 @@ async def review_manual_grant(
             f"Пользователь: {escape(_format_user_name(profile.user))}\n"
             f"Тариф: {escape(tariff.name)}\n"
             f"Срок: {tariff.duration_days} дн.\n"
-            f"РљР°РЅР°Р»: {escape(tariff.channel.title)}"
+            f"Канал: {escape(tariff.channel.title)}"
         ),
         reply_markup=admin_confirm_keyboard(
             confirm_callback=(

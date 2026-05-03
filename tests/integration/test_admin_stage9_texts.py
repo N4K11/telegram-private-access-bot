@@ -112,7 +112,7 @@ async def test_stage9_default_templates_seed_and_render_clean(
     keys = {template.key for template in templates}
 
     assert created == len(DEFAULT_TEXT_TEMPLATES)
-    assert {"start", "profile", "tariffs", "payment_success", "support", "payment_support", "terms", "privacy", "refund_policy"}.issubset(keys)
+    assert {"start", "profile", "tariffs", "payment_success", "support", "payment_support", "terms", "privacy", "refund_policy", "faq", "channel_rules", "after_payment_guide", "crypto_payment_guide", "offer"}.issubset(keys)
     assert all(not has_mojibake(template.title) for template in templates)
     assert all(not has_mojibake(template.body) for template in templates)
 

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -14,6 +14,7 @@ SUPPORT_STATUS_OPEN = "open"
 SUPPORT_STATUS_CLOSED = "closed"
 SUPPORT_MESSAGE_LIMIT = 1500
 SUPPORT_TICKET_DAILY_LIMIT = 3
+SUPPORT_STALE_HOURS = 24
 
 SUPPORT_CATEGORY_PAYMENT = "payment"
 SUPPORT_CATEGORY_ACCESS = "access"
@@ -41,12 +42,19 @@ class SupportTicketError(ValueError):
 class SupportUserDashboard:
     open_ticket: SupportTicket | None
     recent_tickets: list[SupportTicket]
+    open_count: int
+    closed_count: int
 
 
 @dataclass(slots=True)
 class SupportAdminInbox:
     status: str
     tickets: list[SupportTicket]
+    open_count: int
+    closed_count: int
+    awaiting_admin_count: int
+    awaiting_user_count: int
+    stale_open_count: int
 
 
 @dataclass(slots=True)
@@ -76,7 +84,14 @@ async def build_user_support_dashboard(
     repository = SupportTicketRepository(session)
     open_ticket = await repository.get_open_for_user(user_id)
     recent_tickets = await repository.list_for_user(user_id, limit=limit)
-    return SupportUserDashboard(open_ticket=open_ticket, recent_tickets=recent_tickets)
+    open_count = sum(1 for item in recent_tickets if item.status == SUPPORT_STATUS_OPEN)
+    closed_count = sum(1 for item in recent_tickets if item.status == SUPPORT_STATUS_CLOSED)
+    return SupportUserDashboard(
+        open_ticket=open_ticket,
+        recent_tickets=recent_tickets,
+        open_count=open_count,
+        closed_count=closed_count,
+    )
 
 
 async def build_admin_support_inbox(
@@ -84,10 +99,22 @@ async def build_admin_support_inbox(
     *,
     status: str = SUPPORT_STATUS_OPEN,
     limit: int = 20,
+    now: datetime | None = None,
 ) -> SupportAdminInbox:
     repository = SupportTicketRepository(session)
+    event_time = ensure_aware_utc(now or utcnow())
     tickets = await repository.list_by_status(status, limit=limit)
-    return SupportAdminInbox(status=status, tickets=tickets)
+    return SupportAdminInbox(
+        status=status,
+        tickets=tickets,
+        open_count=await repository.count_by_status(SUPPORT_STATUS_OPEN),
+        closed_count=await repository.count_by_status(SUPPORT_STATUS_CLOSED),
+        awaiting_admin_count=await repository.count_open_waiting_on_admin(),
+        awaiting_user_count=await repository.count_open_waiting_on_user(),
+        stale_open_count=await repository.count_stale_open(
+            since=event_time - timedelta(hours=SUPPORT_STALE_HOURS)
+        ),
+    )
 
 
 async def get_user_ticket_thread(

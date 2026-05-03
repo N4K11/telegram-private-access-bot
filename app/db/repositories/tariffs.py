@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 
@@ -36,6 +36,15 @@ class TariffRepository:
         )
         return list(result.scalars())
 
+    async def list_for_channel(self, channel_id: int) -> list[Tariff]:
+        result = await self._session.execute(
+            select(Tariff)
+            .options(selectinload(Tariff.channel))
+            .where(Tariff.channel_id == channel_id)
+            .order_by(Tariff.sort_order.asc(), Tariff.id.asc())
+        )
+        return list(result.scalars())
+
     async def get_by_id(self, tariff_id: int) -> Tariff | None:
         result = await self._session.execute(
             select(Tariff)
@@ -49,8 +58,12 @@ class TariffRepository:
             name=draft.name,
             description=draft.description,
             badge=draft.badge,
+            offer_copy=draft.offer_copy,
+            offer_group=draft.offer_group,
             is_trial=draft.is_trial,
             is_lifetime=draft.is_lifetime,
+            is_featured=draft.is_featured,
+            is_default_offer=draft.is_default_offer,
             price_stars=draft.price_stars,
             price_crypto=draft.crypto_price_amount,
             crypto_price_amount=draft.crypto_price_amount,

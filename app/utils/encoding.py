@@ -3,22 +3,30 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 MOJIBAKE_FRAGMENTS: tuple[str, ...] = (
-    "Рџ",
-    "Рќ",
-    "Р°",
-    "РЎ",
-    "Р“",
-    "Рљ",
-    "Ð",
-    "Ñ",
+    "Р Сџ",
+    "Р Сњ",
+    "Р В°",
+    "Р РЋ",
+    "Р вЂњ",
+    "Р С™",
+    "Гђ",
+    "Г‘",
     "PIPS",
     "PjP",
-    "P¤",
-    "P•",
-    "�",
-    "в­ђ",
-    "в‚ї",
+    "PВ¤",
+    "PвЂў",
+    "пїЅ",
+    "РІВ­С’",
+    "РІвЂљС—",
+    "СЂСџ",
+    "Рџ",
+    "РЎ",
+    "Рќ",
+    "Рђ",
+    "Рљ",
+    "Рў",
     "рџ",
+    "вЂ",
 )
 
 
@@ -41,10 +49,17 @@ def repair_mojibake_text(text: str | None) -> str | None:
     if not is_mojibake(candidate):
         return candidate
 
-    try:
-        repaired = candidate.encode("cp1251").decode("utf-8")
-    except (UnicodeEncodeError, UnicodeDecodeError):
-        return candidate
+    repaired = candidate
+    for _ in range(3):
+        try:
+            next_value = repaired.encode("cp1251").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            break
+        if not next_value or next_value == repaired:
+            break
+        repaired = next_value
+        if not is_mojibake(repaired):
+            break
 
     return repaired or candidate
 

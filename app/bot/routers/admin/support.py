@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 from html import escape
@@ -23,6 +23,7 @@ from app.services.admin_roles import PERMISSION_SUPPORT
 from app.services.support import (
     SUPPORT_STATUS_CLOSED,
     SUPPORT_STATUS_OPEN,
+    SupportAdminInbox,
     SupportTicketError,
     add_admin_ticket_reply,
     build_admin_support_inbox,
@@ -46,7 +47,7 @@ async def admin_support(message: Message, session: AsyncSession, settings: Setti
     inbox = await build_admin_support_inbox(session, status=SUPPORT_STATUS_OPEN)
     await render_section(
         message,
-        text=_render_inbox(inbox.status, inbox.tickets, timezone=settings.timezone),
+        text=_render_inbox(inbox, timezone=settings.timezone),
         reply_markup=admin_support_inbox_keyboard(inbox.tickets, status=inbox.status),
         banner_path=get_banner_path("admin"),
     )
@@ -61,7 +62,7 @@ async def admin_support_home(
     inbox = await build_admin_support_inbox(session, status=SUPPORT_STATUS_OPEN)
     await render_section(
         callback,
-        text=_render_inbox(inbox.status, inbox.tickets, timezone=settings.timezone),
+        text=_render_inbox(inbox, timezone=settings.timezone),
         reply_markup=admin_support_inbox_keyboard(inbox.tickets, status=inbox.status),
         banner_path=get_banner_path("admin"),
     )
@@ -80,7 +81,7 @@ async def admin_support_list(
     inbox = await build_admin_support_inbox(session, status=status)
     await render_section(
         callback,
-        text=_render_inbox(inbox.status, inbox.tickets, timezone=settings.timezone),
+        text=_render_inbox(inbox, timezone=settings.timezone),
         reply_markup=admin_support_inbox_keyboard(inbox.tickets, status=inbox.status),
         banner_path=get_banner_path("admin"),
     )
@@ -108,6 +109,7 @@ async def admin_support_view(
         text=_render_thread(thread, timezone=settings.timezone),
         reply_markup=admin_support_ticket_keyboard(
             thread.ticket.id,
+            user_id=thread.ticket.user_id,
             status=status,
             is_open=thread.ticket.status == SUPPORT_STATUS_OPEN,
         ),
@@ -169,6 +171,7 @@ async def admin_support_receive_reply(
             + _render_thread(thread, timezone=settings.timezone),
             reply_markup=admin_support_ticket_keyboard(
                 thread.ticket.id,
+                user_id=thread.ticket.user_id,
                 status=list_status,
                 is_open=True,
             ),
@@ -206,6 +209,7 @@ async def admin_support_close(
             text="✅ Обращение закрыто.\n\n" + _render_thread(thread, timezone=settings.timezone),
             reply_markup=admin_support_ticket_keyboard(
                 thread.ticket.id,
+                user_id=thread.ticket.user_id,
                 status=status,
                 is_open=False,
             ),
@@ -243,6 +247,7 @@ async def admin_support_reopen(
             ),
             reply_markup=admin_support_ticket_keyboard(
                 thread.ticket.id,
+                user_id=thread.ticket.user_id,
                 status=status,
                 is_open=True,
             ),
@@ -253,22 +258,30 @@ async def admin_support_reopen(
         await callback.answer(str(exc), show_alert=True)
 
 
-def _render_inbox(status: str, tickets, *, timezone: str) -> str:
+def _render_inbox(inbox: SupportAdminInbox, *, timezone: str) -> str:
     lines = [
-        f"🎫 Поддержка • {support_status_label(status)}",
+        f"🎫 Поддержка • {support_status_label(inbox.status)}",
+        "",
+        "Сводка:",
+        f"• Открыто: {inbox.open_count}",
+        f"• Закрыто: {inbox.closed_count}",
+        f"• Ждут ответа админа: {inbox.awaiting_admin_count}",
+        f"• Ждут пользователя: {inbox.awaiting_user_count}",
+        f"• Просрочено > 24ч: {inbox.stale_open_count}",
         "",
     ]
-    if not tickets:
+    if not inbox.tickets:
         lines.append("Список обращений пуст.")
         return "\n".join(lines)
-    for ticket in tickets:
+    for ticket in inbox.tickets:
         user_name = ticket.user.first_name or ticket.user.username or f"User {ticket.user_id}"
         lines.append(
             f"#{ticket.id} • {support_category_label(ticket.category)} • {escape(user_name)}"
         )
+        state_label = _ticket_waiting_label(ticket)
         lines.append(
             f"Обновлено: {format_datetime(ticket.updated_at, timezone)} • "
-            f"Сообщений: {len(ticket.messages)}"
+            f"Сообщений: {len(ticket.messages)} • {state_label}"
         )
         if ticket.messages:
             lines.append(f"Последнее: {escape(_shorten(ticket.messages[-1].body, limit=100))}")
@@ -287,6 +300,7 @@ def _render_thread(thread, *, timezone: str) -> str:
         f"Telegram ID: <code>{user.telegram_id}</code>",
         f"Категория: {support_category_label(ticket.category)}",
         f"Статус: {support_status_label(ticket.status)}",
+        f"Состояние: {_ticket_waiting_label(ticket)}",
         f"Создано: {format_datetime(ticket.created_at, timezone)}",
         f"Обновлено: {format_datetime(ticket.updated_at, timezone)}",
         "",
@@ -327,10 +341,21 @@ def _parse_admin_ticket_context(data: str | None, *, action: str) -> tuple[int, 
         return None
 
 
+def _ticket_waiting_label(ticket) -> str:
+    if ticket.status != SUPPORT_STATUS_OPEN:
+        return "закрыт"
+    if ticket.last_user_message_at and (
+        ticket.last_admin_message_at is None
+        or ticket.last_user_message_at > ticket.last_admin_message_at
+    ):
+        return "ждёт админа"
+    if ticket.last_admin_message_at:
+        return "ждёт пользователя"
+    return "новый"
+
+
 def _shorten(text: str, *, limit: int) -> str:
     collapsed = " ".join(text.split())
     if len(collapsed) <= limit:
         return collapsed
     return f"{collapsed[: limit - 3]}..."
-
-

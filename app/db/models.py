@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
@@ -47,7 +47,11 @@ class User(TimestampMixin, Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-
+    onboarding_step: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     subscriptions: Mapped[list[Subscription]] = relationship(back_populates="user")
     payments: Mapped[list[Payment]] = relationship(back_populates="user")
 
@@ -74,8 +78,12 @@ class Tariff(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     badge: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    offer_copy: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    offer_group: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_trial: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_lifetime: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_default_offer: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     price_stars: Mapped[int] = mapped_column(Integer, nullable=False)
     price_crypto: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     crypto_price_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)

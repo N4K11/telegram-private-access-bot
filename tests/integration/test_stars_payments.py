@@ -37,7 +37,7 @@ async def _seed_user_channel_tariff(session: AsyncSession) -> tuple[User, Channe
     user = User(telegram_id=42, first_name="Anna", is_admin=False, role="user")
     channel = Channel(
         telegram_chat_id=-1001234567890,
-        title="РћСЃРЅРѕРІРЅРѕР№ РєР°РЅР°Р»",
+        title="Основной канал",
         invite_users_permission=True,
         ban_users_permission=True,
         is_active=True,

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import logging
@@ -13,6 +13,12 @@ from aiohttp import web
 from app.config import Settings
 from app.healthcheck import run_healthcheck
 from app.runtime_state import snapshot_runtime_state
+from app.services.observability import (
+    EVENT_CRYPTO_WEBHOOK_FAILED,
+    EVENT_CRYPTO_WEBHOOK_REJECTED,
+    EVENT_WEBHOOK_INVALID_JSON,
+    EVENT_WEBHOOK_UNAUTHORIZED,
+)
 from app.services.payments.crypto_pay import (
     CryptoPayError,
     process_crypto_pay_webhook_update,
@@ -49,9 +55,27 @@ async def telegram_webhook(request: web.Request) -> web.Response:
     )
     actual_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
     if not expected_secret or not secrets.compare_digest(actual_secret, expected_secret):
+        logger.error(
+            "Rejected Telegram webhook request: secret token mismatch.",
+            extra={
+                "event_name": EVENT_WEBHOOK_UNAUTHORIZED,
+                "path": str(request.rel_url),
+            },
+        )
         return web.json_response({"ok": False, "error": "unauthorized"}, status=401)
 
-    payload = await request.json(loads=bot.session.json_loads)
+    try:
+        payload = await request.json(loads=bot.session.json_loads)
+    except (json.JSONDecodeError, ValueError):
+        logger.error(
+            "Rejected Telegram webhook request: invalid JSON payload.",
+            extra={
+                "event_name": EVENT_WEBHOOK_INVALID_JSON,
+                "path": str(request.rel_url),
+            },
+        )
+        return web.json_response({"ok": False, "error": "invalid_json"}, status=400)
+
     update = Update.model_validate(payload, context={"bot": bot})
     result = await dispatcher.feed_update(bot, update)
     if isinstance(result, TelegramMethod):
@@ -76,11 +100,25 @@ async def crypto_pay_webhook(request: web.Request) -> web.Response:
     body = await request.read()
     signature = request.headers.get("crypto-pay-api-signature", "")
     if not verify_crypto_pay_webhook_signature(token, body, signature):
+        logger.error(
+            "Rejected Crypto Pay webhook request: signature mismatch.",
+            extra={
+                "event_name": EVENT_CRYPTO_WEBHOOK_REJECTED,
+                "path": str(request.rel_url),
+            },
+        )
         return web.json_response({"ok": False, "error": "unauthorized"}, status=401)
 
     try:
         payload = json.loads(body.decode("utf-8"))
     except json.JSONDecodeError:
+        logger.error(
+            "Rejected Crypto Pay webhook request: invalid JSON payload.",
+            extra={
+                "event_name": EVENT_CRYPTO_WEBHOOK_REJECTED,
+                "path": str(request.rel_url),
+            },
+        )
         return web.json_response({"ok": False, "error": "invalid_json"}, status=400)
 
     try:
@@ -92,10 +130,17 @@ async def crypto_pay_webhook(request: web.Request) -> web.Response:
             )
             await session.commit()
     except CryptoPayError as exc:
-        logger.warning("Crypto Pay webhook rejected: %s", exc)
+        logger.error(
+            "Crypto Pay webhook rejected: %s",
+            exc,
+            extra={"event_name": EVENT_CRYPTO_WEBHOOK_REJECTED},
+        )
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
     except Exception:
-        logger.exception("Crypto Pay webhook processing failed")
+        logger.exception(
+            "Crypto Pay webhook processing failed",
+            extra={"event_name": EVENT_CRYPTO_WEBHOOK_FAILED},
+        )
         return web.json_response({"ok": False, "error": "internal_error"}, status=500)
 
     return web.json_response({"ok": True, "handled": result is not None})

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -28,8 +28,12 @@ class TariffDraft:
     sort_order: int = DEFAULT_TARIFF_SORT_ORDER
     description: str | None = None
     badge: str | None = None
+    offer_copy: str | None = None
+    offer_group: str | None = None
     is_trial: bool = False
     is_lifetime: bool = False
+    is_featured: bool = False
+    is_default_offer: bool = False
     crypto_price_amount: Decimal | None = None
     crypto_asset: str | None = None
 
@@ -76,6 +80,24 @@ def validate_optional_badge(raw_value: str) -> str | None:
 def validate_optional_description(raw_value: str) -> str | None:
     value = raw_value.strip()
     return value or None
+
+
+def validate_optional_offer_copy(raw_value: str) -> str | None:
+    value = raw_value.strip()
+    if not value:
+        return None
+    if len(value) > 160:
+        raise TariffValidationError("Короткий оффер должен быть не длиннее 160 символов.")
+    return value
+
+
+def validate_optional_offer_group(raw_value: str) -> str | None:
+    value = raw_value.strip()
+    if not value:
+        return None
+    if len(value) > 64:
+        raise TariffValidationError("Название группы офферов должно быть не длиннее 64 символов.")
+    return value
 
 
 def normalize_crypto_asset(raw_value: str | None) -> str | None:
@@ -135,8 +157,12 @@ def validate_tariff_payload(
         sort_order=checked_sort,
         description=validate_optional_description(description or ""),
         badge=validate_optional_badge(badge or ""),
+        offer_copy=None,
+        offer_group=None,
         is_trial=is_trial,
         is_lifetime=is_lifetime,
+        is_featured=False,
+        is_default_offer=False,
         crypto_price_amount=(
             None
             if crypto_price_amount is None or not crypto_price_amount.strip()

@@ -5,6 +5,10 @@ Production-oriented Telegram bot for selling access to private channels with Tel
 ## Implemented features
 
 - Russian user and admin inline navigation.
+- Smart onboarding for first-time users with persistent three-step progress and skip flow.
+- Content / FAQ CMS for FAQ, channel rules, post-payment guide, crypto guide and offer pages backed by managed text templates.
+- Smart channel guard that checks active channels in the background and alerts admins once when bot rights are lost.
+- Daily/weekly automatic admin reports with new users, payments, revenue, active subscriptions and anomalies.
 - Minimalist runtime banners with safe text-only fallback.
 - Channel and tariff management from the admin panel.
 - `/admin_channel_check` for live channel diagnostics and bot rights verification.
@@ -26,7 +30,7 @@ Production-oriented Telegram bot for selling access to private channels with Tel
 - Managed legal texts for terms, privacy, refunds and payment support.
 - Daily and manual backups with retention and Telegram document delivery.
 - Healthcheck, JSON logs, anti-spam, runtime telemetry and rate limiting middleware.
-- Dual runtime modes: polling by default and production webhook mode with `/healthz`, `/readyz` and the Telegram Mini App cabinet.
+- Dual runtime modes: polling by default and production webhook mode with `/healthz`, `/readyz` and the Telegram Mini App cabinet with profile, multi-product catalog, active product access, tariffs, payments, referrals, promos, support, renew CTA and an admin dashboard for users, payments, crypto invoices, promos, tickets, broadcasts, anomalies and live channel check.
 
 ## Stack
 
@@ -75,6 +79,7 @@ Optional production flags:
 
 - `USE_WEBHOOK`
 - `PUBLIC_WEBHOOK_URL`
+- `BOT_PUBLIC_USERNAME`
 - `WEBHOOK_SECRET_TOKEN`
 - `WEBHOOK_PATH`
 - `WEBAPP_HOST`
@@ -97,7 +102,7 @@ When `USE_WEBHOOK=true`, the runtime:
 - binds the Telegram webhook endpoint at `WEBHOOK_PATH`;
 - validates `X-Telegram-Bot-Api-Secret-Token`;
 - registers `PUBLIC_WEBHOOK_URL + WEBHOOK_PATH` via `setWebhook`;
-- serves the Mini App page at `MINI_APP_PATH` with strict Telegram `initData` auth;
+- serves the Mini App page at `MINI_APP_PATH` with strict Telegram `initData` auth plus profile, multi-product catalog, payment, promo, support and admin dashboard widgets;
 - keeps background workers running;
 - exposes `GET /healthz` and `GET /readyz`.
 
@@ -131,11 +136,18 @@ When `USE_WEBHOOK=true`, the runtime:
 - `/support`
 - `/cabinet`
 
+## Mini App admin API
+
+- `GET MINI_APP_PATH/api/admin/dashboard`
+- `GET MINI_APP_PATH/api/admin/users?filter=...&query=...&page=...`
+- `GET MINI_APP_PATH/api/admin/payments?provider=...&query=...&page=...`
+- `POST MINI_APP_PATH/api/admin/actions/channel-check`
+
 ## Project layout
 
 - `app/` application code.
 - `app/bot/` routers, filters, keyboards and middlewares.
-- `app/services/` payment, invite, analytics, diagnostics, backup and text logic.
+- `app/services/` payment, invite, analytics, diagnostics, backup, reporting and text logic.
 - `app/db/` models, repositories and session helpers.
 - `app/webhook/` webhook runtime server and HTTP handlers.
 - `app/webapp/` Mini App HTTP handlers and auth binding.

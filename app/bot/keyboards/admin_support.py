@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections.abc import Sequence
 
@@ -37,6 +37,7 @@ def admin_support_inbox_keyboard(
 def admin_support_ticket_keyboard(
     ticket_id: int,
     *,
+    user_id: int,
     status: str,
     is_open: bool,
 ) -> InlineKeyboardMarkup:
@@ -55,8 +56,20 @@ def admin_support_ticket_keyboard(
             text="♻️ Переоткрыть",
             callback_data=f"menu:admin:support:reopen:{ticket_id}:{status}",
         )
+    builder.button(
+        text="👤 Профиль",
+        callback_data=f"menu:admin:users:view:{user_id}:all:1",
+    )
+    builder.button(
+        text="💳 Платежи",
+        callback_data=f"menu:admin:users:payments:{user_id}:all:1",
+    )
+    builder.button(
+        text="📚 Подписки",
+        callback_data=f"menu:admin:users:subscriptions:{user_id}:all:1",
+    )
     builder.button(text="📬 К списку", callback_data=f"menu:admin:support:list:{status}")
     builder.button(text="⬅️ Назад", callback_data="menu:admin:home")
     builder.button(text=ADMIN_HOME_TEXT, callback_data="menu:admin:home")
-    builder.adjust(1)
+    builder.adjust(2, 2, 1, 1, 1)
     return builder.as_markup()

@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import json
@@ -19,6 +20,12 @@ EVENT_INVITE_CREATED = "invite_created"
 EVENT_TELEGRAM_API_ERROR = "telegram_api_error"
 EVENT_WORKER_CYCLE_FAILED = "worker_cycle_failed"
 EVENT_CRITICAL_ERROR = "critical_error"
+EVENT_WEBHOOK_UNAUTHORIZED = "webhook_unauthorized"
+EVENT_WEBHOOK_INVALID_JSON = "webhook_invalid_json"
+EVENT_CRYPTO_WEBHOOK_REJECTED = "crypto_webhook_rejected"
+EVENT_CRYPTO_WEBHOOK_FAILED = "crypto_webhook_failed"
+EVENT_CABINET_AUTH_FAILED = "cabinet_auth_failed"
+EVENT_CHANNEL_GUARD_INCIDENT = "channel_guard_incident"
 
 BOT_TOKEN_RE = re.compile(r"\b\d{6,12}:[A-Za-z0-9_-]{20,}\b")
 INVITE_LINK_RE = re.compile(r"https?://t\.me/(?:joinchat/|\+)[A-Za-z0-9_-]+", re.IGNORECASE)
@@ -124,7 +131,7 @@ def render_admin_observability_report(report: AdminObservabilityReport, *, timez
     lines.append("")
     lines.append("Последние ошибки:")
     if not report.recent_errors:
-        lines.append("— критических ошибок пока нет")
+        lines.append("— Критических ошибок пока нет")
     else:
         for item in report.recent_errors:
             lines.append(
@@ -136,7 +143,7 @@ def render_admin_observability_report(report: AdminObservabilityReport, *, timez
     lines.append("")
     lines.append("Статусы воркеров:")
     if not report.worker_statuses:
-        lines.append("— ещё нет данных")
+        lines.append("— Ещё не зафиксированы")
     else:
         for item in report.worker_statuses:
             details = escape(item.details) if item.details else "без деталей"
@@ -187,7 +194,7 @@ def _render_backup_result(
     timezone: str,
 ) -> str:
     if at is None or not status:
-        return "ещё нет данных"
+        return "ещё не выполнялся"
     label = {
         "ok": "успешно",
         "fail": "ошибка",

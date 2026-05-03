@@ -25,8 +25,8 @@ from app.webhook.server import build_webhook_app
 
 
 @pytest_asyncio.fixture
-async def crypto_webhook_runtime(tmp_path: Path) -> AsyncIterator[tuple[TestClient, Settings, async_sessionmaker[AsyncSession], int]]:
-    database_path = tmp_path / "crypto-webhook.db"
+async def crypto_webhook_runtime(workspace_tmp_path: Path) -> AsyncIterator[tuple[TestClient, Settings, async_sessionmaker[AsyncSession], int]]:
+    database_path = workspace_tmp_path / "crypto-webhook.db"
     engine = create_async_engine(f"sqlite+aiosqlite:///{database_path.as_posix()}")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -79,7 +79,7 @@ async def crypto_webhook_runtime(tmp_path: Path) -> AsyncIterator[tuple[TestClie
             "bot_token": "123456789:token",
             "admin_ids": [1],
             "database_url": f"sqlite+aiosqlite:///{database_path.as_posix()}",
-            "backup_directory": str(tmp_path / "backups"),
+            "backup_directory": str(workspace_tmp_path / "backups"),
             "use_webhook": True,
             "public_webhook_url": "https://example.com",
             "webhook_secret_token": "telegram-secret",
