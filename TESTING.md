@@ -18,7 +18,7 @@ For webhook deployments, also run:
 set -a
 . ./.env
 set +a
-sh scripts/smoke_webhook_runtime.sh
+bash scripts/smoke_webhook_runtime.sh
 ```
 
 With `BOT_TOKEN` and `ADMIN_IDS` present, the smoke script verifies authorized Mini App auth, bootstrap, role gating and admin support/users/payments endpoints.

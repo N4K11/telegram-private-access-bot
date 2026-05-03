@@ -368,7 +368,7 @@ If the cabinet does not open correctly:
 - if APIs return `403`, verify the requested target user and admin role.
 - if Mini App admin panels are empty, verify the role has the required permissions (`admin_panel`, `users_view`, `payments`, `support`, `diagnostics`).
 - if the Mini App support inbox opens but thread details fail, verify the role still has `support` permission and the ticket id exists.
-- use `sh scripts/smoke_webhook_runtime.sh` after webhook deploys; with `BOT_TOKEN` and `ADMIN_IDS` it also exercises authorized Mini App auth plus admin users/payments/support endpoints.
+- use `bash scripts/smoke_webhook_runtime.sh` after webhook deploys; with `BOT_TOKEN` and `ADMIN_IDS` it also exercises authorized Mini App auth plus admin users/payments/support endpoints.
 - if user buy/tariffs screens show a product picker unexpectedly, verify more than one active channel currently has at least one active tariff.
 
 ## Content / FAQ CMS

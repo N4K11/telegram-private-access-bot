@@ -80,7 +80,7 @@ After a webhook deploy, export the runtime env and run the smoke script from the
 set -a
 . ./.env
 set +a
-sh scripts/smoke_webhook_runtime.sh
+bash scripts/smoke_webhook_runtime.sh
 ```
 
 If `BOT_TOKEN` and `ADMIN_IDS` are available in the environment, the script also verifies:
