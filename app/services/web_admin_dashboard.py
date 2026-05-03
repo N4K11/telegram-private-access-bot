@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import unescape
 
 from aiogram import Bot
@@ -18,6 +18,8 @@ from app.db.models import (
     Payment,
     PromoCode,
     PromoRedemption,
+    SupportMessage,
+    SupportTicket,
     Tariff,
 )
 from app.runtime_state import snapshot_runtime_state
@@ -38,6 +40,7 @@ from app.services.analytics import build_analytics_snapshot
 from app.services.audit import write_audit_log
 from app.services.channel_diagnostics import build_channel_diagnostics_report
 from app.services.observability import sanitize_observability_text
+from app.services.profile import build_user_profile_snapshot
 from app.services.support import (
     build_admin_support_inbox,
     support_category_label,
@@ -53,6 +56,18 @@ PREVIEW_LIMIT = 4
 LARGE_PAGE_SIZE = 5000
 USER_FILTERS = ("all", "active", "expired", "never_paid", "blocked", "stars", "crypto")
 PAYMENT_FILTERS = {"all": "\u0412\u0441\u0435", "stars": "Telegram Stars", "crypto": "Crypto Pay"}
+SUPPORT_FILTERS = {"open": "\u041e\u0442\u043a\u0440\u044b\u0442\u044b\u0435", "closed": "\u0417\u0430\u043a\u0440\u044b\u0442\u044b\u0435"}
+SUPPORT_QUEUE_FILTERS = {
+    "all": "\u0412\u0441\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u044b\u0435",
+    "awaiting_admin": "\u0416\u0434\u0443\u0442 \u0430\u0434\u043c\u0438\u043d\u0430",
+    "awaiting_user": "\u0416\u0434\u0443\u0442 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f",
+    "stale": "\u041f\u0440\u043e\u0441\u0440\u043e\u0447\u0435\u043d\u043d\u044b\u0435 >24\u0447",
+}
+SUPPORT_WAITING_STATE_LABELS = {
+    "awaiting_admin": "\u0416\u0434\u0451\u0442 \u0430\u0434\u043c\u0438\u043d\u0430",
+    "awaiting_user": "\u0416\u0434\u0451\u0442 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f",
+    "new": "\u041d\u043e\u0432\u044b\u0439",
+}
 PROMO_TYPE_LABELS = {
     "discount_percent": "\u0421\u043a\u0438\u0434\u043a\u0430, %",
     "discount_stars": "\u0421\u043a\u0438\u0434\u043a\u0430, Stars",
@@ -358,8 +373,181 @@ async def _crypto_invoice_overview(
     }
 
 
+async def build_web_admin_support_payload(
+    session: AsyncSession,
+    *,
+    settings: Settings,
+    viewer_role: str,
+    status: str = "open",
+    queue: str = "all",
+    query: str | None = None,
+    page: int = 1,
+    page_size: int = DEFAULT_PAGE_SIZE,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    del viewer_role
+    current_time = ensure_aware_utc(now or utcnow())
+    stale_before = current_time - timedelta(hours=24)
+    normalized_status = status if status in SUPPORT_FILTERS else "open"
+    normalized_queue = (
+        queue
+        if normalized_status == "open" and queue in SUPPORT_QUEUE_FILTERS
+        else "all"
+    )
+    normalized_query = (query or "").strip().casefold()
+    result = await session.execute(
+        select(SupportTicket)
+        .options(
+            selectinload(SupportTicket.user),
+            selectinload(SupportTicket.messages).selectinload(SupportMessage.sender),
+        )
+        .where(SupportTicket.status == normalized_status)
+        .order_by(SupportTicket.updated_at.desc(), SupportTicket.id.desc())
+    )
+    items = list(result.scalars())
+    queue_counts = (
+        _support_queue_counts(items, stale_before=stale_before)
+        if normalized_status == "open"
+        else {"all": len(items)}
+    )
+    if normalized_status == "open" and normalized_queue != "all":
+        items = [
+            item
+            for item in items
+            if _matches_support_queue(
+                item,
+                queue=normalized_queue,
+                stale_before=stale_before,
+            )
+        ]
+    if normalized_query:
+        items = [item for item in items if normalized_query in _support_search_blob(item)]
+    current_items, current_page, total_pages = _paginate(items, page=page, page_size=page_size)
+    inbox = await build_admin_support_inbox(session, status=normalized_status, limit=1, now=current_time)
+    return {
+        "status": normalized_status,
+        "status_label": SUPPORT_FILTERS[normalized_status],
+        "queue": normalized_queue,
+        "queue_label": SUPPORT_QUEUE_FILTERS.get(normalized_queue, "\u0412\u0441\u0435")
+        if normalized_status == "open"
+        else "\u0412\u0441\u0435",
+        "queue_counts": queue_counts,
+        "query": query or "",
+        "page": current_page,
+        "total_pages": total_pages,
+        "total_items": len(items),
+        "open_count": inbox.open_count,
+        "closed_count": inbox.closed_count,
+        "awaiting_admin_count": inbox.awaiting_admin_count,
+        "awaiting_user_count": inbox.awaiting_user_count,
+        "stale_open_count": inbox.stale_open_count,
+        "available_statuses": [
+            {"key": key, "label": label} for key, label in SUPPORT_FILTERS.items()
+        ],
+        "available_queues": [
+            {"key": key, "label": label}
+            for key, label in (
+                SUPPORT_QUEUE_FILTERS.items()
+                if normalized_status == "open"
+                else (("all", "\u0412\u0441\u0435"),)
+            )
+        ],
+        "items": [
+            _serialize_support_ticket_list_item(
+                item,
+                settings=settings,
+                stale_before=stale_before,
+            )
+            for item in current_items
+        ],
+    }
+
+
+async def build_web_admin_support_ticket_payload(
+    session: AsyncSession,
+    *,
+    settings: Settings,
+    viewer_role: str,
+    ticket_id: int,
+) -> dict[str, object] | None:
+    del viewer_role
+    current_time = ensure_aware_utc(utcnow())
+    stale_before = current_time - timedelta(hours=24)
+    result = await session.execute(
+        select(SupportTicket)
+        .options(
+            selectinload(SupportTicket.user),
+            selectinload(SupportTicket.messages).selectinload(SupportMessage.sender),
+        )
+        .where(SupportTicket.id == ticket_id)
+    )
+    ticket = result.scalar_one_or_none()
+    if ticket is None:
+        return None
+
+    profile_snapshot = await build_user_profile_snapshot(
+        session,
+        telegram_user_id=ticket.user.telegram_id,
+        history_limit=PREVIEW_LIMIT,
+    )
+    payment_result = await session.execute(
+        select(Payment)
+        .options(selectinload(Payment.user), selectinload(Payment.tariff).selectinload(Tariff.channel))
+        .where(Payment.user_id == ticket.user_id)
+        .where(Payment.status == "paid")
+        .order_by(Payment.paid_at.desc(), Payment.id.desc())
+        .limit(PREVIEW_LIMIT)
+    )
+    payments = list(payment_result.scalars())
+
+    return {
+        "ticket": _serialize_support_ticket_list_item(
+            ticket,
+            settings=settings,
+            stale_before=stale_before,
+        ),
+        "messages": [
+            {
+                "id": item.id,
+                "is_admin": bool(item.is_admin),
+                "sender_label": "\u0410\u0434\u043c\u0438\u043d" if item.is_admin else _display_name(item.sender),
+                "body": sanitize_observability_text(_plain(item.body)),
+                "created_at_label": _dt(item.created_at, settings.timezone),
+            }
+            for item in ticket.messages
+        ],
+        "profile": _serialize_support_profile_summary(
+            profile_snapshot,
+            settings=settings,
+        ),
+        "payments_preview": [
+            {
+                "id": item.id,
+                "amount_label": _payment_amount(item),
+                "provider_label": "Crypto Pay" if item.provider.startswith("crypto") else "Telegram Stars",
+                "tariff_name": _tariff_name(item.tariff, item.tariff_id),
+                "channel_title": _channel_name(item),
+                "paid_at_label": _dt(item.paid_at, settings.timezone),
+            }
+            for item in payments
+        ],
+        "actions": {
+            "user_query": str(ticket.user.telegram_id),
+            "payments_query": str(ticket.user.telegram_id),
+            "profile_path": f"{settings.mini_app_path}/api/users/{ticket.user.telegram_id}/profile",
+        },
+    }
+
+
 async def _support_overview(session: AsyncSession, *, settings: Settings) -> dict[str, object]:
-    inbox = await build_admin_support_inbox(session, status="open", limit=PREVIEW_LIMIT)
+    current_time = ensure_aware_utc(utcnow())
+    stale_before = current_time - timedelta(hours=24)
+    inbox = await build_admin_support_inbox(
+        session,
+        status="open",
+        limit=PREVIEW_LIMIT,
+        now=current_time,
+    )
     return {
         "open_count": inbox.open_count,
         "closed_count": inbox.closed_count,
@@ -367,17 +555,11 @@ async def _support_overview(session: AsyncSession, *, settings: Settings) -> dic
         "awaiting_user_count": inbox.awaiting_user_count,
         "stale_open_count": inbox.stale_open_count,
         "recent": [
-            {
-                "id": item.id,
-                "user_id": item.user_id,
-                "category": item.category,
-                "category_label": support_category_label(item.category),
-                "status": item.status,
-                "status_label": support_status_label(item.status),
-                "user_display_name": _display_name(item.user),
-                "updated_at_label": _dt(item.updated_at, settings.timezone),
-                "waiting_state": _support_waiting_state(item),
-            }
+            _serialize_support_ticket_list_item(
+                item,
+                settings=settings,
+                stale_before=stale_before,
+            )
             for item in inbox.tickets
         ],
     }
@@ -575,6 +757,129 @@ def _display_name(user) -> str:
 
 
 
+def _serialize_support_ticket_list_item(
+    ticket: SupportTicket,
+    *,
+    settings: Settings,
+    stale_before: datetime | None = None,
+) -> dict[str, object]:
+    waiting_state = _support_waiting_state(ticket)
+    return {
+        "id": ticket.id,
+        "user_id": ticket.user_id,
+        "telegram_id": ticket.user.telegram_id if ticket.user is not None else None,
+        "user_display_name": _display_name(ticket.user),
+        "category": ticket.category,
+        "category_label": support_category_label(ticket.category),
+        "status": ticket.status,
+        "status_label": support_status_label(ticket.status),
+        "waiting_state": waiting_state,
+        "waiting_state_label": SUPPORT_WAITING_STATE_LABELS.get(waiting_state, waiting_state),
+        "updated_at_label": _dt(ticket.updated_at, settings.timezone),
+        "created_at_label": _dt(ticket.created_at, settings.timezone),
+        "closed_at_label": _dt(ticket.closed_at, settings.timezone),
+        "message_count": len(ticket.messages or []),
+        "last_message_preview": _support_last_message_preview(ticket),
+        "is_open": ticket.status == "open",
+        "is_stale": _is_support_ticket_stale(ticket, stale_before=stale_before),
+    }
+
+
+def _serialize_support_profile_summary(snapshot, *, settings: Settings) -> dict[str, object] | None:
+    if snapshot is None:
+        return None
+    return {
+        "telegram_id": snapshot.user.telegram_id,
+        "display_name": _display_name(snapshot.user),
+        "status_label": snapshot.status_label,
+        "latest_expires_at_label": _dt(snapshot.latest_expires_at, settings.timezone),
+        "remaining_label": snapshot.remaining_label,
+        "current_tariff_label": snapshot.current_tariff_label,
+        "current_channel_label": snapshot.current_channel_label,
+        "active_subscription_count": snapshot.active_subscription_count,
+        "total_stars_amount": snapshot.total_stars_amount,
+    }
+
+
+def _support_search_blob(ticket: SupportTicket) -> str:
+    return " ".join(
+        part.casefold()
+        for part in (
+            str(ticket.id),
+            str(ticket.user_id),
+            str(ticket.user.telegram_id) if ticket.user is not None else "",
+            ticket.user.username if ticket.user is not None and ticket.user.username else "",
+            ticket.user.first_name if ticket.user is not None and ticket.user.first_name else "",
+            ticket.user.last_name if ticket.user is not None and ticket.user.last_name else "",
+            ticket.category,
+            ticket.status,
+        )
+        if part
+    )
+
+
+def _support_last_message_preview(ticket: SupportTicket) -> str | None:
+    if not ticket.messages:
+        return None
+    preview = sanitize_observability_text(_plain(ticket.messages[-1].body))
+    return _truncate(preview, limit=160)
+
+
+def _matches_support_queue(
+    ticket: SupportTicket,
+    *,
+    queue: str,
+    stale_before: datetime,
+) -> bool:
+    if queue == "all":
+        return True
+    if queue == "awaiting_admin":
+        return _support_waiting_state(ticket) == "awaiting_admin"
+    if queue == "awaiting_user":
+        return _support_waiting_state(ticket) == "awaiting_user"
+    if queue == "stale":
+        return _is_support_ticket_stale(ticket, stale_before=stale_before)
+    return True
+
+
+def _support_queue_counts(
+    tickets: list[SupportTicket],
+    *,
+    stale_before: datetime,
+) -> dict[str, int]:
+    return {
+        "all": len(tickets),
+        "awaiting_admin": sum(
+            1 for ticket in tickets if _support_waiting_state(ticket) == "awaiting_admin"
+        ),
+        "awaiting_user": sum(
+            1 for ticket in tickets if _support_waiting_state(ticket) == "awaiting_user"
+        ),
+        "stale": sum(
+            1 for ticket in tickets if _is_support_ticket_stale(ticket, stale_before=stale_before)
+        ),
+    }
+
+
+def _is_support_ticket_stale(
+    ticket: SupportTicket,
+    *,
+    stale_before: datetime | None,
+) -> bool:
+    if stale_before is None or ticket.status != "open" or ticket.updated_at is None:
+        return False
+    return ensure_aware_utc(ticket.updated_at) < stale_before
+
+
+def _truncate(value: str | None, *, limit: int) -> str | None:
+    if value is None:
+        return None
+    normalized = " ".join(str(value).split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(0, limit - 1)].rstrip() + "…"
+
+
 def _support_waiting_state(ticket) -> str:
     if ticket.last_user_message_at and (
         ticket.last_admin_message_at is None
@@ -584,6 +889,8 @@ def _support_waiting_state(ticket) -> str:
     if ticket.last_admin_message_at is not None:
         return "awaiting_user"
     return "new"
+
+
 def _payment_amount(item: Payment) -> str:
     if item.provider == "telegram_stars" or item.currency == "XTR":
         return f"{item.amount} Stars"

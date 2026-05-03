@@ -561,6 +561,89 @@ async def test_admin_payments_filters_protect_sensitive_data(webapp_runtime) -> 
     assert "raw_payload" not in item
 
 
+
+async def test_admin_support_endpoints_are_protected_and_available(webapp_runtime) -> None:
+    client, settings, _ = webapp_runtime
+    regular_init_data = _build_init_data({"id": 42, "first_name": "Ruslan", "username": "ruslan"})
+    regular_response = await client.get(
+        f"{settings.mini_app_path}/api/admin/support",
+        headers={"X-Telegram-Init-Data": regular_init_data},
+    )
+    assert regular_response.status == 403
+
+    admin_init_data = _build_init_data({"id": 1, "first_name": "Owner", "username": "owner"})
+    admin_response = await client.get(
+        f"{settings.mini_app_path}/api/admin/support?status=open",
+        headers={"X-Telegram-Init-Data": admin_init_data},
+    )
+    assert admin_response.status == 200
+    payload = await admin_response.json()
+    assert payload["ok"] is True
+    data = payload["data"]
+    assert data["status"] == "open"
+    assert data["queue"] == "all"
+    assert data["open_count"] == 2
+    assert data["closed_count"] == 1
+    assert data["awaiting_admin_count"] == 2
+    assert data["queue_counts"]["all"] == 2
+    assert data["queue_counts"]["awaiting_admin"] == 2
+    assert data["queue_counts"]["awaiting_user"] == 0
+    assert data["queue_counts"]["stale"] == 2
+    assert data["items"]
+    assert data["items"][0]["message_count"] >= 1
+    assert data["items"][0]["last_message_preview"]
+    assert data["items"][0]["waiting_state_label"] == "Ждёт админа"
+    assert data["items"][0]["is_stale"] is True
+
+    stale_response = await client.get(
+        f"{settings.mini_app_path}/api/admin/support?status=open&queue=stale",
+        headers={"X-Telegram-Init-Data": admin_init_data},
+    )
+    assert stale_response.status == 200
+    stale_payload = await stale_response.json()
+    assert stale_payload["data"]["queue"] == "stale"
+    assert stale_payload["data"]["total_items"] == 2
+    assert all(item["is_stale"] for item in stale_payload["data"]["items"])
+
+
+async def test_admin_support_ticket_detail_includes_profile_and_payments(webapp_runtime) -> None:
+    client, settings, session_factory = webapp_runtime
+    regular_init_data = _build_init_data({"id": 42, "first_name": "Ruslan", "username": "ruslan"})
+    admin_init_data = _build_init_data({"id": 1, "first_name": "Owner", "username": "owner"})
+
+    async with session_factory() as session:
+        ticket_result = await session.execute(
+            select(SupportTicket.id)
+            .where(SupportTicket.category == "payment")
+            .limit(1)
+        )
+        ticket_id = ticket_result.scalar_one()
+
+    forbidden_response = await client.get(
+        f"{settings.mini_app_path}/api/admin/support/{ticket_id}",
+        headers={"X-Telegram-Init-Data": regular_init_data},
+    )
+    assert forbidden_response.status == 403
+
+    response = await client.get(
+        f"{settings.mini_app_path}/api/admin/support/{ticket_id}",
+        headers={"X-Telegram-Init-Data": admin_init_data},
+    )
+    assert response.status == 200
+    payload = await response.json()
+    assert payload["ok"] is True
+    data = payload["data"]
+    assert data["ticket"]["id"] == ticket_id
+    assert data["ticket"]["waiting_state_label"] == "Ждёт админа"
+    assert data["ticket"]["is_stale"] is True
+    assert data["profile"]["telegram_id"] == 42
+    assert data["profile"]["current_tariff_label"]
+    assert data["profile"]["current_channel_label"]
+    assert data["payments_preview"]
+    assert data["messages"][0]["body"] == "Payment is not visible"
+    assert data["actions"]["user_query"] == "42"
+    assert data["actions"]["payments_query"] == "42"
+
 async def test_admin_channel_check_action_writes_audit_log(
     monkeypatch: pytest.MonkeyPatch, webapp_runtime
 ) -> None:

@@ -10,6 +10,19 @@ alembic upgrade head
 python -m app.healthcheck
 ```
 
+## Webhook smoke
+
+For webhook deployments, also run:
+
+```bash
+set -a
+. ./.env
+set +a
+sh scripts/smoke_webhook_runtime.sh
+```
+
+With `BOT_TOKEN` and `ADMIN_IDS` present, the smoke script verifies authorized Mini App auth, bootstrap, role gating and admin support/users/payments endpoints.
+
 ## Docker validation
 
 ```bash

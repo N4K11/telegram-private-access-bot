@@ -141,6 +141,8 @@ When `USE_WEBHOOK=true`, the runtime:
 - `GET MINI_APP_PATH/api/admin/dashboard`
 - `GET MINI_APP_PATH/api/admin/users?filter=...&query=...&page=...`
 - `GET MINI_APP_PATH/api/admin/payments?provider=...&query=...&page=...`
+- `GET MINI_APP_PATH/api/admin/support?status=...&queue=...&query=...&page=...`
+- `GET MINI_APP_PATH/api/admin/support/{ticket_id}`
 - `POST MINI_APP_PATH/api/admin/actions/channel-check`
 
 ## Project layout

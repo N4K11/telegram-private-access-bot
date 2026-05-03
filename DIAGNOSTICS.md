@@ -355,6 +355,8 @@ Endpoints:
 - `GET MINI_APP_PATH/api/admin/dashboard` - Mini App admin dashboard with overview cards and capability-aware sections.
 - `GET MINI_APP_PATH/api/admin/users?filter=...&query=...&page=...` - admin-only filterable user directory payload.
 - `GET MINI_APP_PATH/api/admin/payments?provider=...&query=...&page=...` - admin-only filterable payments payload with redacted fields only.
+- `GET MINI_APP_PATH/api/admin/support?status=...&queue=...&query=...&page=...` - admin-only support inbox payload with open/closed filters, queue triage (`all`, `awaiting_admin`, `awaiting_user`, `stale`), wait-state counters and ticket previews.
+- `GET MINI_APP_PATH/api/admin/support/{ticket_id}` - admin-only ticket thread with profile/subscription summary and recent payments for fast support triage.
 - `POST MINI_APP_PATH/api/admin/actions/channel-check` - admin-only live channel check that also writes audit `webapp_admin_channel_check`.
 
 If the cabinet does not open correctly:
@@ -364,7 +366,10 @@ If the cabinet does not open correctly:
 - verify Telegram opens the page from a WebApp button and not from a stale browser tab;
 - if APIs return `401`, regenerate fresh `initData` by reopening the Mini App from Telegram;
 - if APIs return `403`, verify the requested target user and admin role.
-- if Mini App admin panels are empty, verify the role has the required permissions (`admin_panel`, `users_view`, `payments`, `diagnostics`).`r`n- if user buy/tariffs screens show a product picker unexpectedly, verify more than one active channel currently has at least one active tariff.
+- if Mini App admin panels are empty, verify the role has the required permissions (`admin_panel`, `users_view`, `payments`, `support`, `diagnostics`).
+- if the Mini App support inbox opens but thread details fail, verify the role still has `support` permission and the ticket id exists.
+- use `sh scripts/smoke_webhook_runtime.sh` after webhook deploys; with `BOT_TOKEN` and `ADMIN_IDS` it also exercises authorized Mini App auth plus admin users/payments/support endpoints.
+- if user buy/tariffs screens show a product picker unexpectedly, verify more than one active channel currently has at least one active tariff.
 
 ## Content / FAQ CMS
 

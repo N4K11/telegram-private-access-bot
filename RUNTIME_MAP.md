@@ -14,9 +14,9 @@
   - `POST WEBHOOK_PATH` for Telegram updates;
   - `GET /healthz` for liveness;
   - `GET /readyz` for readiness.
-- `app.webapp.handlers` serves the Mini App page at `MINI_APP_PATH` and strict auth APIs under `MINI_APP_PATH/api/*`, including admin dashboard/users/payments endpoints and the Mini App channel-check action.
+- `app.webapp.handlers` serves the Mini App page at `MINI_APP_PATH` and strict auth APIs under `MINI_APP_PATH/api/*`, including admin dashboard/users/payments/support endpoints and the Mini App channel-check action.
 - `app.services.web_cabinet` serializes the user cabinet payload: profile, grouped products, active product access, flat tariffs, recent payments, referrals, pending promos, support state and Telegram deep-link actions.
-- `app.services.web_admin_dashboard` serializes the Mini App admin dashboard, filterable users/payments payloads, safe overview cards and the live channel-check action result.
+- `app.services.web_admin_dashboard` serializes the Mini App admin dashboard, filterable users/payments/support payloads, ticket detail context, safe overview cards and the live channel-check action result.
 - In webhook mode the runtime registers `PUBLIC_WEBHOOK_URL + WEBHOOK_PATH` via `setWebhook` and can optionally call `deleteWebhook` on shutdown.
 
 ## Runtime state and telemetry

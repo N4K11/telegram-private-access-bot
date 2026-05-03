@@ -72,6 +72,32 @@ sudo systemctl status telegram-private-access-bot
 - `DELETE_WEBHOOK_ON_SHUTDOWN=true` is optional and usually useful only in controlled maintenance flows.
 - `/readyz` checks database connectivity and backup directory availability.
 
+## Webhook smoke
+
+After a webhook deploy, export the runtime env and run the smoke script from the project root:
+
+```bash
+set -a
+. ./.env
+set +a
+sh scripts/smoke_webhook_runtime.sh
+```
+
+If `BOT_TOKEN` and `ADMIN_IDS` are available in the environment, the script also verifies:
+
+- valid Mini App auth;
+- `/api/bootstrap` and own profile access;
+- non-admin `403` on `/api/admin/dashboard`;
+- admin access to dashboard, users, payments and support inbox;
+- optional support ticket detail, when at least one open ticket exists.
+
+Optional overrides:
+
+- `MINI_APP_SMOKE_USER_ID`
+- `MINI_APP_SMOKE_USER_NAME`
+- `MINI_APP_SMOKE_ADMIN_ID`
+- `MINI_APP_SMOKE_ADMIN_NAME`
+
 ## Notes
 
 - SQLite is intended only for local tests and development bootstrap.
