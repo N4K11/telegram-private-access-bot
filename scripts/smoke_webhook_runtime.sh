@@ -20,16 +20,16 @@ require_var PUBLIC_WEBHOOK_URL
 require_var WEBHOOK_PATH
 require_var MINI_APP_PATH
 
-if [[ "$PUBLIC_WEBHOOK_URL" != *"$WEBHOOK_PATH" ]]; then
-  echo "PUBLIC_WEBHOOK_URL does not end with WEBHOOK_PATH" >&2
-  exit 1
-fi
+case "$WEBHOOK_PATH" in
+  /*) ;;
+  *)
+    echo "WEBHOOK_PATH must start with /" >&2
+    exit 1
+    ;;
+esac
 
-BASE_URL="${PUBLIC_WEBHOOK_URL%$WEBHOOK_PATH}"
-if [ -z "$BASE_URL" ]; then
-  echo "Failed to derive BASE_URL from PUBLIC_WEBHOOK_URL" >&2
-  exit 1
-fi
+BASE_URL="${PUBLIC_WEBHOOK_URL%/}"
+WEBHOOK_URL="$BASE_URL$WEBHOOK_PATH"
 
 curl -fsS "$BASE_URL/healthz" >/dev/null
 curl -fsS "$BASE_URL/readyz" >/dev/null
@@ -48,7 +48,7 @@ if [ "$auth_status" != "401" ] && [ "$auth_status" != "400" ]; then
   exit 1
 fi
 
-webhook_status=$(http_code POST "$PUBLIC_WEBHOOK_URL" \
+webhook_status=$(http_code POST "$WEBHOOK_URL" \
   -H 'Content-Type: application/json' \
   -H 'X-Telegram-Bot-Api-Secret-Token: invalid-smoke-token' \
   -d '{}')
@@ -68,4 +68,4 @@ if [ "${CRYPTO_PAY_ENABLED:-false}" = "true" ] && [ -n "${CRYPTO_PAY_WEBHOOK_PAT
   fi
 fi
 
-echo "Webhook smoke checks passed for $BASE_URL"
+echo "Webhook smoke checks passed for $WEBHOOK_URL"
