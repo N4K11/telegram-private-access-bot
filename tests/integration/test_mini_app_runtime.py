@@ -435,8 +435,18 @@ async def test_bootstrap_returns_own_data(webapp_runtime) -> None:
         "payment",
         "access",
     }
-    assert data["actions"]["renew_link"] == "https://t.me/privatair_bot"
-    assert data["actions"]["support_link"] == "https://t.me/privatair_bot"
+    assert data["profile"]["primary_channel_id"] == 1
+    assert data["actions"]["buy_link"] == "https://t.me/privatair_bot?start=buy"
+    assert data["actions"]["renew_link"] == "https://t.me/privatair_bot?start=buy_1"
+    assert data["actions"]["tariffs_link"] == "https://t.me/privatair_bot?start=tariffs_1"
+    assert data["actions"]["support_link"] == "https://t.me/privatair_bot?start=help"
+    assert data["actions"]["link_link"] == "https://t.me/privatair_bot?start=link"
+    assert products["Private channel"]["buy_link"] == "https://t.me/privatair_bot?start=buy_1"
+    assert products["Private channel"]["tariffs_link"] == "https://t.me/privatair_bot?start=tariffs_1"
+    assert products["VIP chat"]["buy_link"] == "https://t.me/privatair_bot?start=buy_2"
+    active_products = {item["channel_id"]: item for item in data["active_products"]}
+    assert active_products[1]["renew_link"] == "https://t.me/privatair_bot?start=buy_1"
+    assert active_products[2]["renew_link"] == "https://t.me/privatair_bot?start=buy_2"
     assert data["referrals"]["referral_link"] == "https://t.me/privatair_bot?start=ref_REF42"
 
 

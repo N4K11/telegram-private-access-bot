@@ -198,15 +198,32 @@ async def _render_buy_section_text(
     )
     featured_details = build_offer_details(featured_tariff, baseline_tariff=baseline_tariff)
     lines = [await _text(session, "user_tariffs"), "", "Рекомендуемый оффер:"]
-    lines.append(f"• {escape(_tariff_title(featured_tariff))} — {featured_tariff.price_stars} Stars")
-    lines.append(f"• {featured_details.price_per_day_label}")
-    if featured_details.savings_label:
-        lines.append(f"• {featured_details.savings_label}")
+    lines.append(f"• {_compact_offer_line(featured_tariff, baseline_tariff=baseline_tariff)}")
     if featured_details.offer_copy:
         lines.append(f"• {escape(featured_details.offer_copy)}")
-    if len(tariffs) > 1:
-        lines.extend(["", f"Всего офферов: {len(tariffs)}"])
+
+    alternatives = [tariff for tariff in tariffs if tariff.id != featured_tariff.id]
+    if alternatives:
+        lines.extend(["", "Ещё варианты:"])
+        preview_limit = 3
+        for tariff in alternatives[:preview_limit]:
+            lines.append(f"• {_compact_offer_line(tariff, baseline_tariff=baseline_tariff)}")
+        remaining = len(alternatives) - min(len(alternatives), preview_limit)
+        if remaining > 0:
+            lines.append(f"• и ещё {remaining} офферов в списке ниже")
+        lines.extend(["", "Можно оплатить сразу быстрым оффером или выбрать любой другой тариф ниже."])
     return "\n".join(lines)
+
+
+def _compact_offer_line(tariff: Tariff, *, baseline_tariff: Tariff) -> str:
+    details = build_offer_details(tariff, baseline_tariff=baseline_tariff)
+    parts = [
+        f"{escape(_tariff_title(tariff))} — {tariff.price_stars} Stars",
+        details.price_per_day_label,
+    ]
+    if details.savings_label:
+        parts.append(details.savings_label)
+    return " • ".join(parts)
 
 
 async def _render_tariff_detail(
@@ -375,14 +392,19 @@ async def _render_product_picker_text(
         marker = f"{' '.join(prefix)} " if prefix else ""
         heading = f"{FOLDER} Продукт: {escape(product.channel_title)}"
         if mode == "buy":
-            lines.append(
-                f"{index}. {heading} — {marker}{product.price_range_label}"
-            )
+            lines.append(f"{index}. {heading} — {marker}{product.price_range_label}")
         else:
             tariff_label = "тариф" if product.tariff_count == 1 else ("тарифа" if product.tariff_count < 5 else "тарифов")
-            lines.append(
-                f"{index}. {heading} — {marker}{product.tariff_count} {tariff_label}"
-            )
+            lines.append(f"{index}. {heading} — {marker}{product.tariff_count} {tariff_label}")
+
+        baseline_tariff = pick_default_tariff(product.tariffs) or product.tariffs[0]
+        lead_tariff = next(
+            (tariff for tariff in product.tariffs if getattr(tariff, "is_featured", False)),
+            baseline_tariff,
+        )
+        lines.append(f"   • {_compact_offer_line(lead_tariff, baseline_tariff=baseline_tariff)}")
+        if product.bundle_names:
+            lines.append(f"   • пакеты: {', '.join(product.bundle_names)}")
 
     key = "product_buy_picker" if mode == "buy" else "product_tariffs_picker"
     return await _text(session, key, products_block="\n".join(lines))
@@ -434,6 +456,140 @@ def _render_crypto_invoice_text(
     return "\n".join(lines)
 
 
+async def render_buy_entrypoint(
+    target: Message | CallbackQuery,
+    session: AsyncSession,
+    settings: Settings | None = None,
+    *,
+    channel_id: int | None = None,
+) -> bool:
+    catalog = await _load_active_product_catalog(session)
+    product = get_product_entry(catalog, channel_id) if channel_id is not None else None
+    if channel_id is not None and product is not None:
+        text = await _render_buy_section_text(session, product.tariffs)
+        await render_section(
+            target,
+            text=_prepend_product_heading(text, product),
+            reply_markup=user_tariffs_keyboard(
+                product.tariffs,
+                mode="buy",
+                back_callback="menu:user:buy",
+            ),
+            banner_path=get_banner_path("buy"),
+        )
+        return True
+
+    if is_multi_product_catalog(catalog):
+        await render_section(
+            target,
+            text=await _render_product_picker_text(session, catalog, mode="buy"),
+            reply_markup=user_product_picker_keyboard(catalog, mode="buy"),
+            banner_path=get_banner_path("buy"),
+        )
+        return channel_id is None
+
+    tariffs = catalog[0].tariffs if catalog else []
+    await render_section(
+        target,
+        text=await _render_buy_section_text(session, tariffs),
+        reply_markup=user_tariffs_keyboard(tariffs, mode="buy"),
+        banner_path=get_banner_path("buy"),
+    )
+    return channel_id is None or bool(catalog)
+
+
+async def render_tariffs_entrypoint(
+    target: Message | CallbackQuery,
+    session: AsyncSession,
+    settings: Settings | None = None,
+    *,
+    channel_id: int | None = None,
+) -> bool:
+    catalog = await _load_active_product_catalog(session)
+    product = get_product_entry(catalog, channel_id) if channel_id is not None else None
+    crypto_enabled = bool(settings.crypto_pay_enabled) if settings is not None else False
+    accepted_assets = settings.crypto_pay_accepted_assets if settings is not None else []
+    if channel_id is not None and product is not None:
+        text = await _render_tariffs_overview(
+            session,
+            product.tariffs,
+            crypto_enabled=crypto_enabled,
+            accepted_assets=accepted_assets,
+        )
+        await render_section(
+            target,
+            text=_prepend_product_heading(text, product),
+            reply_markup=user_tariffs_keyboard(
+                product.tariffs,
+                mode="browse",
+                back_callback="menu:user:tariffs",
+            ),
+            banner_path=get_banner_path("tariffs"),
+        )
+        return True
+
+    if is_multi_product_catalog(catalog):
+        await render_section(
+            target,
+            text=await _render_product_picker_text(session, catalog, mode="browse"),
+            reply_markup=user_product_picker_keyboard(catalog, mode="browse"),
+            banner_path=get_banner_path("tariffs"),
+        )
+        return channel_id is None
+
+    tariffs = catalog[0].tariffs if catalog else []
+    await render_section(
+        target,
+        text=await _render_tariffs_overview(
+            session,
+            tariffs,
+            crypto_enabled=crypto_enabled,
+            accepted_assets=accepted_assets,
+        ),
+        reply_markup=user_tariffs_keyboard(tariffs, mode="browse"),
+        banner_path=get_banner_path("tariffs"),
+    )
+    return channel_id is None or bool(catalog)
+
+
+async def track_buy_entrypoint_view(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int | None,
+    channel_id: int | None = None,
+) -> None:
+    catalog = await _load_active_product_catalog(session)
+    product = get_product_entry(catalog, channel_id) if channel_id is not None else None
+    await _track_funnel_event(
+        session,
+        event_name="buy_screen_viewed",
+        telegram_user_id=telegram_user_id,
+        channel_id=(
+            product.channel_id
+            if product is not None
+            else (catalog[0].channel_id if len(catalog) == 1 else None)
+        ),
+        extra_payload={
+            "product_count": len(catalog),
+            "tariff_count": sum(len(entry.tariffs) for entry in catalog),
+            "multi_product": is_multi_product_catalog(catalog),
+            "source": "start_deep_link",
+        },
+    )
+    if product is not None:
+        await _track_funnel_event(
+            session,
+            event_name="product_selected",
+            telegram_user_id=telegram_user_id,
+            channel_id=product.channel_id,
+            extra_payload={
+                "product_title": product.channel_title,
+                "tariff_count": len(product.tariffs),
+                "source": "start_deep_link",
+            },
+        )
+
+
 @router.message(Command("paysupport"))
 async def paysupport_command(
     message: Message,
@@ -444,7 +600,6 @@ async def paysupport_command(
 
 @router.callback_query(F.data == "menu:user:buy")
 async def buy_section(callback: CallbackQuery, session: AsyncSession, settings: Settings) -> None:
-    del settings
     catalog = await _load_active_product_catalog(session)
     await _track_funnel_event(
         session,
@@ -457,22 +612,7 @@ async def buy_section(callback: CallbackQuery, session: AsyncSession, settings: 
             "multi_product": is_multi_product_catalog(catalog),
         },
     )
-    if is_multi_product_catalog(catalog):
-        await render_section(
-            callback,
-            text=await _render_product_picker_text(session, catalog, mode="buy"),
-            reply_markup=user_product_picker_keyboard(catalog, mode="buy"),
-            banner_path=get_banner_path("buy"),
-        )
-        return
-
-    tariffs = catalog[0].tariffs if catalog else []
-    await render_section(
-        callback,
-        text=await _render_buy_section_text(session, tariffs),
-        reply_markup=user_tariffs_keyboard(tariffs, mode="buy"),
-        banner_path=get_banner_path("buy"),
-    )
+    await render_buy_entrypoint(callback, session, settings)
 
 
 @router.callback_query(F.data.startswith("menu:user:buy:product:"))
@@ -481,7 +621,6 @@ async def buy_product_section(
     session: AsyncSession,
     settings: Settings,
 ) -> None:
-    del settings
     channel_id = _callback_entity_id(callback.data)
     if channel_id is None:
         await callback.answer()
@@ -501,43 +640,17 @@ async def buy_product_section(
             "tariff_count": len(product.tariffs),
         },
     )
-    text = await _render_buy_section_text(session, product.tariffs)
-    await render_section(
+    await render_buy_entrypoint(
         callback,
-        text=_prepend_product_heading(text, product),
-        reply_markup=user_tariffs_keyboard(
-            product.tariffs,
-            mode="buy",
-            back_callback="menu:user:buy",
-        ),
-        banner_path=get_banner_path("buy"),
+        session,
+        settings,
+        channel_id=product.channel_id,
     )
 
 
 @router.callback_query(F.data == "menu:user:tariffs")
 async def tariffs_section(callback: CallbackQuery, session: AsyncSession, settings: Settings) -> None:
-    catalog = await _load_active_product_catalog(session)
-    if is_multi_product_catalog(catalog):
-        await render_section(
-            callback,
-            text=await _render_product_picker_text(session, catalog, mode="browse"),
-            reply_markup=user_product_picker_keyboard(catalog, mode="browse"),
-            banner_path=get_banner_path("tariffs"),
-        )
-        return
-
-    tariffs = catalog[0].tariffs if catalog else []
-    await render_section(
-        callback,
-        text=await _render_tariffs_overview(
-            session,
-            tariffs,
-            crypto_enabled=settings.crypto_pay_enabled,
-            accepted_assets=settings.crypto_pay_accepted_assets,
-        ),
-        reply_markup=user_tariffs_keyboard(tariffs, mode="browse"),
-        banner_path=get_banner_path("tariffs"),
-    )
+    await render_tariffs_entrypoint(callback, session, settings)
 
 
 @router.callback_query(F.data.startswith("menu:user:tariffs:product:"))
@@ -555,21 +668,11 @@ async def tariffs_product_section(
     if product is None:
         await callback.answer("Продукт недоступен.", show_alert=True)
         return
-    text = await _render_tariffs_overview(
-        session,
-        product.tariffs,
-        crypto_enabled=settings.crypto_pay_enabled,
-        accepted_assets=settings.crypto_pay_accepted_assets,
-    )
-    await render_section(
+    await render_tariffs_entrypoint(
         callback,
-        text=_prepend_product_heading(text, product),
-        reply_markup=user_tariffs_keyboard(
-            product.tariffs,
-            mode="browse",
-            back_callback="menu:user:tariffs",
-        ),
-        banner_path=get_banner_path("tariffs"),
+        session,
+        settings,
+        channel_id=product.channel_id,
     )
 
 

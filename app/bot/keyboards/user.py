@@ -13,6 +13,7 @@ from app.services.product_service import (
     ProductCatalogEntry,
     build_offer_details,
     pick_default_tariff,
+    pick_featured_tariff,
 )
 from app.utils.encoding import safe_ui_text
 
@@ -77,6 +78,7 @@ TXT_BUY_PREFIX = "\u041a\u0443\u043f\u0438\u0442\u044c"
 TXT_RATE = "\u0442\u0430\u0440\u0438\u0444"
 TXT_RATES_2_4 = "\u0442\u0430\u0440\u0438\u0444\u0430"
 TXT_RATES_5 = "\u0442\u0430\u0440\u0438\u0444\u043e\u0432"
+TXT_QUICK_START = "\u0411\u044b\u0441\u0442\u0440\u044b\u0439 \u0441\u0442\u0430\u0440\u0442"
 
 USER_BUTTON_BUY_TEXT = f"{EMOJI_BUY} {TXT_BUY_ACCESS}"
 USER_BUTTON_TARIFFS_TEXT = f"{EMOJI_TARIFFS} {TXT_TARIFFS}"
@@ -150,7 +152,10 @@ def _product_button_label(product: ProductCatalogEntry, *, mode: Literal["buy", 
     tariff_label = TXT_RATE if product.tariff_count == 1 else TXT_RATES_2_4
     if product.tariff_count >= 5:
         tariff_label = TXT_RATES_5
-    return f"{PRODUCT_BUTTON_ICON} {title}{marker_suffix} \u2014 {product.tariff_count} {tariff_label}"
+    return (
+        f"{PRODUCT_BUTTON_ICON} {title}{marker_suffix} \u2014 "
+        f"{product.tariff_count} {tariff_label}"
+    )
 
 
 def _tariff_button_text(
@@ -184,6 +189,16 @@ def _tariff_button_text(
         )
     return (
         f"{icon} {marker_prefix}{TXT_BUY_PREFIX}: {prefix}{title} \u2014 "
+        f"{tariff.price_stars}{EMOJI_STARS}"
+    )
+
+
+def _quick_buy_button_text(tariff: Tariff) -> str:
+    title = _safe_tariff_name(tariff)
+    badge = _safe_tariff_badge(tariff)
+    prefix = f"[{badge}] " if badge else ""
+    return (
+        f"{EMOJI_FIRE} {TXT_QUICK_START}: {prefix}{title} \u2014 "
         f"{tariff.price_stars}{EMOJI_STARS}"
     )
 
@@ -257,20 +272,24 @@ def user_purchase_prompt_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def user_profile_keyboard(*, has_active_subscription: bool) -> InlineKeyboardMarkup:
+def user_profile_keyboard(
+    *,
+    has_active_subscription: bool,
+    buy_callback: str = "menu:user:buy",
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if has_active_subscription:
         builder.button(text=USER_BUTTON_LINK_TEXT, callback_data="menu:user:link")
         builder.button(
             text=f"{EMOJI_BUY} {TXT_EXTEND_ACCESS}",
-            callback_data="menu:user:buy",
+            callback_data=buy_callback,
         )
         builder.button(text=USER_BUTTON_HISTORY_TEXT, callback_data="menu:user:payment-history")
         builder.button(text=USER_BUTTON_REFERRALS_TEXT, callback_data="menu:user:referrals")
         builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")
         builder.adjust(2, 2, 1)
     else:
-        builder.button(text=USER_BUTTON_BUY_TEXT, callback_data="menu:user:buy")
+        builder.button(text=USER_BUTTON_BUY_TEXT, callback_data=buy_callback)
         builder.button(text=USER_BUTTON_HISTORY_TEXT, callback_data="menu:user:payment-history")
         builder.button(text=USER_BUTTON_REFERRALS_TEXT, callback_data="menu:user:referrals")
         builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")
@@ -345,7 +364,22 @@ def user_tariffs_keyboard(
         return builder.as_markup()
 
     baseline_tariff = pick_default_tariff(tariffs) or tariffs[0]
-    for index, tariff in enumerate(tariffs):
+    featured_tariff = (
+        pick_featured_tariff(tariffs)
+        if mode == "buy" and len(tariffs) > 1
+        else None
+    )
+    if featured_tariff is not None:
+        builder.button(
+            text=_quick_buy_button_text(featured_tariff),
+            callback_data=f"menu:user:buy:stars:{featured_tariff.id}",
+        )
+    listed_tariffs = [
+        tariff
+        for tariff in tariffs
+        if featured_tariff is None or tariff.id != featured_tariff.id
+    ]
+    for index, tariff in enumerate(listed_tariffs):
         text = _tariff_button_text(
             tariff,
             mode=mode,
@@ -363,6 +397,7 @@ def user_tariffs_keyboard(
     builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")
     builder.adjust(1)
     return builder.as_markup()
+
 
 def user_tariff_detail_keyboard(
     tariff_id: int,

@@ -1,5 +1,6 @@
-﻿from collections.abc import Iterable
+from collections.abc import Iterable
 from functools import lru_cache
+from urllib.parse import quote
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -170,6 +171,15 @@ class Settings(BaseSettings):
         if not self.bot_public_username:
             return None
         return f"https://t.me/{self.bot_public_username}"
+
+    def bot_start_link(self, payload: str | None = None) -> str | None:
+        base = self.bot_public_link
+        if base is None:
+            return None
+        normalized_payload = (payload or "").strip()
+        if not normalized_payload:
+            return base
+        return f"{base}?start={quote(normalized_payload, safe='')}"
 
     @property
     def crypto_pay_webhook_url(self) -> str:

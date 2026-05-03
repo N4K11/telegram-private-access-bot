@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from app.bot.keyboards.user import (
     user_main_menu_keyboard,
     user_product_picker_keyboard,
+    user_profile_keyboard,
     user_tariff_detail_keyboard,
     user_tariffs_keyboard,
 )
@@ -16,19 +17,22 @@ LINK = "\U0001f517"
 HELP = "\u2753"
 ADMIN = "\U0001f6e0"
 PRODUCT = "\U0001f4c1"
+FIRE = "\U0001f525"
 BACK = "\u2b05\ufe0f"
 
-TXT_BUY_ACCESS = "\u041a\u0443\u043f\u0438\u0442\u044c \u0434\u043e\u0441\u0442\u0443\u043f"
-TXT_TARIFFS = "\u0422\u0430\u0440\u0438\u0444\u044b"
-TXT_PROFILE = "\u041c\u043e\u0439 \u043f\u0440\u043e\u0444\u0438\u043b\u044c"
-TXT_LINK = "\u041f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0441\u0441\u044b\u043b\u043a\u0443"
-TXT_HELP = "\u041f\u043e\u043c\u043e\u0449\u044c"
-TXT_ADMIN = "\u0410\u0434\u043c\u0438\u043d-\u043f\u0430\u043d\u0435\u043b\u044c"
-TXT_BUY_PREFIX = "\u041a\u0443\u043f\u0438\u0442\u044c"
-TXT_MAIN = "\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043a\u0430\u043d\u0430\u043b"
-TXT_VIP = "VIP-\u0447\u0430\u0442"
-TXT_BACK = "\u041d\u0430\u0437\u0430\u0434"
-TXT_ONE_TARIFF = "\u0442\u0430\u0440\u0438\u0444"
+TXT_BUY_ACCESS = "Купить доступ"
+TXT_TARIFFS = "Тарифы"
+TXT_PROFILE = "Мой профиль"
+TXT_LINK = "Получить ссылку"
+TXT_HELP = "Помощь"
+TXT_ADMIN = "Админ-панель"
+TXT_BUY_PREFIX = "Купить"
+TXT_MAIN = "Основной канал"
+TXT_VIP = "VIP-чат"
+TXT_BACK = "Назад"
+TXT_ONE_TARIFF = "тариф"
+TXT_QUICK_START = "Быстрый старт"
+TXT_EXTEND = "Продлить доступ"
 
 
 def _row_payload(markup) -> list[list[tuple[str, str | None]]]:
@@ -87,10 +91,49 @@ def test_buy_keyboard_preserves_direct_purchase_callbacks() -> None:
     )
     markup = user_tariffs_keyboard([tariff], mode="buy")
     expected = [
-        (f"{DIAMOND} {TXT_BUY_PREFIX}: VIP 30 — 299\u2b50", "menu:user:buy:stars:7")
+        (f"{DIAMOND} {TXT_BUY_PREFIX}: VIP 30 — 299⭐", "menu:user:buy:stars:7")
     ]
 
     assert _row_payload(markup)[0] == expected
+
+
+def test_buy_keyboard_promotes_featured_quick_start_before_other_tariffs() -> None:
+    featured = SimpleNamespace(
+        id=9,
+        name="VIP 90",
+        duration_days=90,
+        price_stars=799,
+        is_lifetime=False,
+        is_trial=False,
+        badge="HIT",
+        is_featured=True,
+        is_default_offer=False,
+        offer_copy=None,
+        offer_group="VIP",
+    )
+    standard = SimpleNamespace(
+        id=8,
+        name="VIP 30",
+        duration_days=30,
+        price_stars=299,
+        is_lifetime=False,
+        is_trial=False,
+        badge=None,
+        is_featured=False,
+        is_default_offer=True,
+        offer_copy=None,
+        offer_group="Base",
+    )
+
+    markup = user_tariffs_keyboard([standard, featured], mode="buy")
+    rows = _row_payload(markup)
+
+    assert rows[0] == [
+        (f"{FIRE} {TXT_QUICK_START}: [HIT] VIP 90 — 799⭐", "menu:user:buy:stars:9")
+    ]
+    assert rows[1] == [
+        (f"{DIAMOND} 🎯 {TXT_BUY_PREFIX}: VIP 30 — 299⭐", "menu:user:buy:stars:8")
+    ]
 
 
 def test_browse_keyboard_uses_tariff_detail_callback() -> None:
@@ -109,7 +152,7 @@ def test_browse_keyboard_uses_tariff_detail_callback() -> None:
     )
     markup = user_tariffs_keyboard([tariff], mode="browse")
     expected = [
-        (f"{DIAMOND} VIP 90 — 90 \u0434\u043d. / 799\u2b50", "menu:user:tariff:9")
+        (f"{DIAMOND} VIP 90 — 90 дн. / 799⭐", "menu:user:tariff:9")
     ]
 
     assert _row_payload(markup)[0] == expected
@@ -123,7 +166,7 @@ def test_product_picker_keyboard_uses_product_callbacks() -> None:
             tariff_count=2,
             price_from_stars=150,
             price_to_stars=250,
-            price_range_label="\u043e\u0442 150\u2b50",
+            price_range_label="от 150⭐",
             featured_tariff_id=None,
             default_tariff_id=None,
             bundle_names=(),
@@ -134,7 +177,7 @@ def test_product_picker_keyboard_uses_product_callbacks() -> None:
             tariff_count=1,
             price_from_stars=700,
             price_to_stars=700,
-            price_range_label="700\u2b50",
+            price_range_label="700⭐",
             featured_tariff_id=None,
             default_tariff_id=None,
             bundle_names=(),
@@ -144,7 +187,7 @@ def test_product_picker_keyboard_uses_product_callbacks() -> None:
     buy_markup = user_product_picker_keyboard(products, mode="buy")
     browse_markup = user_product_picker_keyboard(products, mode="browse")
     expected_buy = [
-        (f"{PRODUCT} {TXT_MAIN} — \u043e\u0442 150\u2b50", "menu:user:buy:product:10")
+        (f"{PRODUCT} {TXT_MAIN} — от 150⭐", "menu:user:buy:product:10")
     ]
     expected_browse = [
         (f"{PRODUCT} {TXT_VIP} — 1 {TXT_ONE_TARIFF}", "menu:user:tariffs:product:20")
@@ -152,6 +195,26 @@ def test_product_picker_keyboard_uses_product_callbacks() -> None:
 
     assert _row_payload(buy_markup)[0] == expected_buy
     assert _row_payload(browse_markup)[1] == expected_browse
+
+
+def test_user_profile_keyboard_uses_custom_buy_callback() -> None:
+    inactive_markup = user_profile_keyboard(
+        has_active_subscription=False,
+        buy_callback="menu:user:buy:product:12",
+    )
+    active_markup = user_profile_keyboard(
+        has_active_subscription=True,
+        buy_callback="menu:user:buy:product:12",
+    )
+
+    assert _row_payload(inactive_markup)[0][0] == (
+        f"{DIAMOND} {TXT_BUY_ACCESS}",
+        "menu:user:buy:product:12",
+    )
+    assert _row_payload(active_markup)[0][1] == (
+        f"{DIAMOND} {TXT_EXTEND}",
+        "menu:user:buy:product:12",
+    )
 
 
 def test_tariff_detail_keyboard_preserves_custom_back_callback() -> None:

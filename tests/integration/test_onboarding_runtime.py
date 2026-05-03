@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.routers.user.start import onboarding_next, onboarding_skip, start_handler
 from app.config import Settings
 from app.db.base import Base
-from app.db.models import User
+from app.db.models import Channel, Tariff, User
 from app.db.repositories.users import UserRepository
 from app.db.session import create_async_engine, create_session_factory
 
@@ -92,6 +92,36 @@ async def settings() -> Settings:
 
 def _flatten_button_texts(markup) -> list[str]:
     return [button.text for row in markup.inline_keyboard for button in row]
+
+
+async def _seed_tariff(
+    session: AsyncSession,
+    *,
+    channel_title: str = "Main channel",
+    price_stars: int = 250,
+    duration_days: int = 30,
+) -> Channel:
+    channel = Channel(
+        telegram_chat_id=-1001234567000 - price_stars,
+        title=channel_title,
+        invite_users_permission=True,
+        ban_users_permission=True,
+        is_active=True,
+    )
+    session.add(channel)
+    await session.flush()
+    session.add(
+        Tariff(
+            name=f"{channel_title} {duration_days}",
+            price_stars=price_stars,
+            duration_days=duration_days,
+            sort_order=10,
+            is_active=True,
+            channel_id=channel.id,
+        )
+    )
+    await session.commit()
+    return channel
 
 
 async def test_start_handler_shows_onboarding_to_new_user(
@@ -181,3 +211,47 @@ async def test_completed_existing_user_does_not_see_onboarding(
     _, caption, _ = message.photo_calls[0]
     assert caption is not None
     assert "Шаг 1/3" not in caption
+
+
+async def test_start_buy_deep_link_bypasses_onboarding(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _seed_tariff(session)
+
+    message = DummyMessage("/start buy", user_id=2005, first_name="Руслан", username="ruslan")
+    await start_handler(message, session, settings)
+
+    assert len(message.photo_calls) == 1
+    _, caption, markup = message.photo_calls[0]
+    assert caption is not None
+    assert "Шаг 1/3" not in caption
+    assert "Купить" in caption
+    assert any("Купить" in text for text in _flatten_button_texts(markup))
+
+
+async def test_start_buy_product_deep_link_renders_selected_product(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _seed_tariff(session, channel_title="Main channel", price_stars=250, duration_days=30)
+    vip_channel = await _seed_tariff(
+        session,
+        channel_title="VIP chat",
+        price_stars=700,
+        duration_days=90,
+    )
+
+    message = DummyMessage(
+        f"/start buy_{vip_channel.id}",
+        user_id=2006,
+        first_name="Руслан",
+        username="ruslan",
+    )
+    await start_handler(message, session, settings)
+
+    assert len(message.photo_calls) == 1
+    _, caption, _ = message.photo_calls[0]
+    assert caption is not None
+    assert "Шаг 1/3" not in caption
+    assert "VIP chat" in caption

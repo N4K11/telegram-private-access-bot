@@ -81,7 +81,7 @@ async def build_cabinet_bootstrap_payload(
     return {
         "viewer": _serialize_user(user),
         "profile": _serialize_profile_snapshot(snapshot, settings=settings),
-        "products": [_serialize_product(product) for product in product_catalog],
+        "products": [_serialize_product(product, settings=settings) for product in product_catalog],
         "active_products": [
             _serialize_active_product(product, settings=settings)
             for product in active_products
@@ -98,7 +98,7 @@ async def build_cabinet_bootstrap_payload(
             if redemption.promo_code is not None
         ],
         "support": _serialize_support_dashboard(support_dashboard, settings=settings),
-        "actions": _serialize_cabinet_actions(settings=settings),
+        "actions": _serialize_cabinet_actions(settings=settings, snapshot=snapshot),
         "mini_app_path": settings.mini_app_path,
     }
 
@@ -139,7 +139,7 @@ async def build_cabinet_profile_payload(
     return {
         "viewer": _serialize_user(snapshot.user),
         "profile": _serialize_profile_snapshot(snapshot, settings=settings),
-        "products": [_serialize_product(product) for product in product_catalog],
+        "products": [_serialize_product(product, settings=settings) for product in product_catalog],
         "active_products": [
             _serialize_active_product(product, settings=settings)
             for product in active_products
@@ -156,7 +156,7 @@ async def build_cabinet_profile_payload(
             if redemption.promo_code is not None
         ],
         "support": _serialize_support_dashboard(support_dashboard, settings=settings),
-        "actions": _serialize_cabinet_actions(settings=settings),
+        "actions": _serialize_cabinet_actions(settings=settings, snapshot=snapshot),
     }
 
 
@@ -253,6 +253,7 @@ def _serialize_profile_snapshot(
         "referral_payload": snapshot.referral_payload,
         "pending_referral_reward_days": snapshot.pending_referral_reward_days,
         "rewarded_referrals_count": snapshot.rewarded_referrals_count,
+        "primary_channel_id": snapshot.primary_channel_id,
     }
 
 
@@ -351,19 +352,37 @@ def _serialize_pending_promo(
     }
 
 
-def _serialize_cabinet_actions(*, settings: Settings) -> dict[str, object]:
+def _serialize_cabinet_actions(
+    *,
+    settings: Settings,
+    snapshot: UserProfileSnapshot | None,
+) -> dict[str, object]:
+    primary_channel_id = snapshot.primary_channel_id if snapshot is not None else None
+    renew_payload = f"buy_{primary_channel_id}" if primary_channel_id is not None else "buy"
+    tariffs_payload = (
+        f"tariffs_{primary_channel_id}"
+        if primary_channel_id is not None
+        else "tariffs"
+    )
     return {
         "bot_username": settings.bot_public_username,
         "bot_link": settings.bot_public_link,
-        "renew_link": settings.bot_public_link,
-        "support_link": settings.bot_public_link,
+        "buy_link": settings.bot_start_link("buy"),
+        "renew_link": settings.bot_start_link(renew_payload),
+        "tariffs_link": settings.bot_start_link(tariffs_payload),
+        "support_link": settings.bot_start_link("help"),
+        "link_link": settings.bot_start_link("link"),
         "promo_command": "/promo CODE",
         "support_command": "/support",
         "cabinet_path": settings.mini_app_path,
     }
 
 
-def _serialize_product(product: ProductCatalogEntry) -> dict[str, object]:
+def _serialize_product(
+    product: ProductCatalogEntry,
+    *,
+    settings: Settings,
+) -> dict[str, object]:
     default_tariff = pick_default_tariff(product.tariffs)
     return {
         "channel_id": product.channel_id,
@@ -376,6 +395,8 @@ def _serialize_product(product: ProductCatalogEntry) -> dict[str, object]:
         "featured_tariff_id": product.featured_tariff_id,
         "default_tariff_id": product.default_tariff_id,
         "bundle_names": list(product.bundle_names),
+        "buy_link": settings.bot_start_link(f"buy_{product.channel_id}"),
+        "tariffs_link": settings.bot_start_link(f"tariffs_{product.channel_id}"),
         "tariffs": [
             _serialize_tariff(tariff, baseline_tariff=default_tariff)
             for tariff in product.tariffs
@@ -395,6 +416,7 @@ def _serialize_active_product(product, *, settings: Settings) -> dict[str, objec
         "subscription_count": product.subscription_count,
         "tariff_names": list(product.tariff_names),
         "subscription_ids": list(product.subscription_ids),
+        "renew_link": settings.bot_start_link(f"buy_{product.channel_id}"),
     }
 
 

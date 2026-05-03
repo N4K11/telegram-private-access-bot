@@ -1,4 +1,4 @@
-﻿# ruff: noqa: E501
+# ruff: noqa: E501
 from __future__ import annotations
 
 from app.bot.keyboards.admin import admin_main_menu_keyboard
@@ -139,6 +139,8 @@ async def test_help_section_navigation_edits_banner_in_place() -> None:
     assert _flatten_button_texts(markup) == [
         "🎫 Создать обращение",
         "📨 Мои обращения",
+        "💎 Купить доступ",
+        "🔗 Получить ссылку",
         "💳 Помощь с оплатой",
         "📄 Условия",
         "🔒 Конфиденциальность",

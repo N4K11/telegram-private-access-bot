@@ -330,3 +330,40 @@ async def test_active_old_subscription_remains_valid_after_tariff_archive(sessio
 
     assert len(active) == 1
     assert active[0].id == subscription.id
+
+
+async def test_buy_keyboard_adds_quick_start_for_featured_tariff(session: AsyncSession) -> None:
+    _, channel = await _seed_user_channel(session)
+    session.add_all(
+        [
+            Tariff(
+                name="Standard 30",
+                price_stars=250,
+                duration_days=30,
+                sort_order=10,
+                is_active=True,
+                channel_id=channel.id,
+                is_default_offer=True,
+            ),
+            Tariff(
+                name="Featured 90",
+                price_stars=700,
+                duration_days=90,
+                sort_order=20,
+                is_active=True,
+                channel_id=channel.id,
+                is_featured=True,
+            ),
+        ]
+    )
+    await session.commit()
+
+    callback = DummyCallback(f"menu:user:buy:product:{channel.id}")
+    settings = Settings.model_validate({"bot_token": "123:token", "admin_ids": [755815181], "timezone": "UTC", "crypto_pay_enabled": False})
+
+    await buy_product_section(callback, session, settings)
+
+    _, markup = callback.message.edit_calls[0]
+    button_texts = _flatten_button_texts(markup)
+    assert button_texts[0].startswith("?? ������� �����")
+    assert any("Standard 30" in value for value in button_texts)

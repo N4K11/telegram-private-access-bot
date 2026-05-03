@@ -42,6 +42,15 @@ def test_webhook_path_normalizes_and_builds_resolved_url() -> None:
     assert settings.webhook_url == "https://example.com/base/telegram/webhook"
 
 
+def test_bot_start_link_builds_deep_links() -> None:
+    settings = _webhook_settings(bot_public_username="privatair_bot")
+
+    assert settings.bot_public_link == "https://t.me/privatair_bot"
+    assert settings.bot_start_link() == "https://t.me/privatair_bot"
+    assert settings.bot_start_link("buy") == "https://t.me/privatair_bot?start=buy"
+    assert settings.bot_start_link("tariffs_12") == "https://t.me/privatair_bot?start=tariffs_12"
+
+
 async def test_set_telegram_webhook_uses_resolved_runtime_settings() -> None:
     settings = _webhook_settings(webhook_path="telegram/webhook")
     bot = SimpleNamespace(set_webhook=AsyncMock())

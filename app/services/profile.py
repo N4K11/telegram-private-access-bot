@@ -1,4 +1,4 @@
-﻿# ruff: noqa: E501
+# ruff: noqa: E501
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -44,6 +44,7 @@ class UserProfileSnapshot:
     remaining_label: str
     current_tariff_label: str
     current_channel_label: str
+    primary_channel_id: int | None
     total_stars_amount: int
     total_crypto_amounts: dict[str, Decimal]
     last_payment_at: datetime | None
@@ -147,6 +148,9 @@ async def build_user_profile_snapshot(
         current_channel_label=_current_channel_label(
             primary_subscription,
             active_subscription_count=len(active_subscriptions),
+        ),
+        primary_channel_id=(
+            primary_subscription.channel_id if primary_subscription is not None else None
         ),
         total_stars_amount=total_stars_amount,
         total_crypto_amounts=total_crypto_amounts,

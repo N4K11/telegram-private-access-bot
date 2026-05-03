@@ -19,6 +19,11 @@ from app.bot.keyboards.user import (
     user_subscription_keyboard,
 )
 from app.bot.rendering import render_section
+from app.bot.routers.user.payments import (
+    render_buy_entrypoint,
+    render_tariffs_entrypoint,
+    track_buy_entrypoint_view,
+)
 from app.bot.routers.user.support import render_support_home
 from app.config import Settings
 from app.db.models import Subscription, User
@@ -65,6 +70,26 @@ def _extract_start_payload(message_text: str | None) -> str | None:
         return None
     payload = parts[1].strip()
     return payload or None
+
+
+def _resolve_start_navigation_action(
+    payload: str | None,
+) -> tuple[str, int | None] | None:
+    if payload is None:
+        return None
+    normalized = payload.strip().lower()
+    if not normalized or normalized.startswith("ref_"):
+        return None
+    if normalized in {"buy", "tariffs", "help", "link"}:
+        return normalized, None
+    for prefix, action in (("buy_", "buy"), ("tariffs_", "tariffs")):
+        if not normalized.startswith(prefix):
+            continue
+        raw_channel_id = normalized.removeprefix(prefix)
+        if raw_channel_id.isdigit():
+            return action, int(raw_channel_id)
+        return None
+    return None
 
 
 def _is_admin(
@@ -248,6 +273,89 @@ async def _maybe_process_start_referral(
         )
 
 
+async def _render_invite_section(
+    event: Message | CallbackQuery,
+    *,
+    session: AsyncSession | None,
+    settings: Settings | None,
+    user: User | None,
+) -> None:
+    active_subscriptions = await _load_active_subscriptions(session, user)
+    if not active_subscriptions:
+        await render_section(
+            event,
+            text=await _text(session, "user_invite_missing"),
+            reply_markup=user_purchase_prompt_keyboard(),
+            banner_path=get_banner_path("join"),
+        )
+        return
+
+    timezone = settings.timezone if settings is not None else "UTC"
+    await render_section(
+        event,
+        text=await _render_invite_picker_text(
+            session,
+            active_subscriptions=active_subscriptions,
+            timezone=timezone,
+        ),
+        reply_markup=user_subscription_keyboard(active_subscriptions),
+        banner_path=get_banner_path("join"),
+    )
+
+
+async def _maybe_handle_start_navigation(
+    message: Message,
+    *,
+    session: AsyncSession | None,
+    settings: Settings | None,
+    user: User | None,
+) -> bool:
+    action = _resolve_start_navigation_action(
+        _extract_start_payload(getattr(message, "text", None))
+    )
+    if action is None:
+        return False
+
+    action_name, channel_id = action
+    if session is None:
+        return False
+
+    telegram_user_id = message.from_user.id if message.from_user is not None else None
+    if action_name == "buy":
+        await track_buy_entrypoint_view(
+            session,
+            telegram_user_id=telegram_user_id,
+            channel_id=channel_id,
+        )
+        await render_buy_entrypoint(
+            message,
+            session,
+            settings,
+            channel_id=channel_id,
+        )
+        return True
+    if action_name == "tariffs":
+        await render_tariffs_entrypoint(
+            message,
+            session,
+            settings,
+            channel_id=channel_id,
+        )
+        return True
+    if action_name == "help":
+        await render_support_home(message, session=session, settings=settings)
+        return True
+    if action_name == "link":
+        await _render_invite_section(
+            message,
+            session=session,
+            settings=settings,
+            user=user,
+        )
+        return True
+    return False
+
+
 async def _render_home_section(
     event: Message | CallbackQuery,
     *,
@@ -331,6 +439,13 @@ async def start_handler(
     user = await _ensure_db_user(session, message.from_user, settings)
     user = user or await _load_db_user(session, message.from_user.id if message.from_user else None)
     referral_message = await _maybe_process_start_referral(message, session=session, user=user)
+    if await _maybe_handle_start_navigation(
+        message,
+        session=session,
+        settings=settings,
+        user=user,
+    ):
+        return
     if await _maybe_render_onboarding(
         message,
         session=session,
@@ -475,24 +590,9 @@ async def invite_section(
     settings: Settings | None = None,
 ) -> None:
     user = await _load_db_user(session, callback.from_user.id if callback.from_user else None)
-    active_subscriptions = await _load_active_subscriptions(session, user)
-    if not active_subscriptions:
-        await render_section(
-            callback,
-            text=await _text(session, "user_invite_missing"),
-            reply_markup=user_purchase_prompt_keyboard(),
-            banner_path=get_banner_path("join"),
-        )
-        return
-
-    timezone = settings.timezone if settings is not None else "UTC"
-    await render_section(
+    await _render_invite_section(
         callback,
-        text=await _render_invite_picker_text(
-            session,
-            active_subscriptions=active_subscriptions,
-            timezone=timezone,
-        ),
-        reply_markup=user_subscription_keyboard(active_subscriptions),
-        banner_path=get_banner_path("join"),
+        session=session,
+        settings=settings,
+        user=user,
     )
