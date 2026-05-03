@@ -28,6 +28,9 @@ def test_smoke_script_auto_loads_project_env_without_overwriting_explicit_overri
     assert 'printf -v "$name"' in text
     assert "load_project_env" in text
     assert 'if [ "${USE_WEBHOOK:-true}" != "true" ]; then' in text
+    assert "wait_for_http_code() {" in text
+    assert 'for attempt in $(seq 1 15); do' in text
+    assert 'sleep 2' in text
 
 
 def test_smoke_script_checks_authorized_mini_app_endpoints_and_role_gates() -> None:

@@ -77,6 +77,27 @@ http_body() {
   curl -sS -X "$method" "$url" "$@"
 }
 
+wait_for_http_code() {
+  local expected="$1"
+  local label="$2"
+  local method="$3"
+  local url="$4"
+  shift 4
+
+  local status=""
+  local attempt
+  for attempt in $(seq 1 15); do
+    status=$(http_code "$method" "$url" "$@" 2>/dev/null || true)
+    if [ "$status" = "$expected" ]; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "$label returned HTTP ${status:-unreachable}" >&2
+  exit 1
+}
+
 first_admin_id() {
   python3 - "$1" <<'PY'
 import re
@@ -154,14 +175,9 @@ BASE_URL="${PUBLIC_WEBHOOK_URL%/}"
 WEBHOOK_URL="$BASE_URL$WEBHOOK_PATH"
 AUTH_ENABLED=false
 
-curl -fsS "$BASE_URL/healthz" >/dev/null
-curl -fsS "$BASE_URL/readyz" >/dev/null
-
-page_status=$(http_code GET "$BASE_URL$MINI_APP_PATH")
-if [ "$page_status" != "200" ]; then
-  echo "Mini App page returned HTTP $page_status" >&2
-  exit 1
-fi
+wait_for_http_code 200 "Health probe /healthz" GET "$BASE_URL/healthz"
+wait_for_http_code 200 "Readiness probe /readyz" GET "$BASE_URL/readyz"
+wait_for_http_code 200 "Mini App page" GET "$BASE_URL$MINI_APP_PATH"
 
 auth_status=$(http_code POST "$BASE_URL$MINI_APP_PATH/api/auth" \
   -H 'Content-Type: application/json' \
