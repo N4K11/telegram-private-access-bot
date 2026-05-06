@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+﻿# ruff: noqa: E501
 from __future__ import annotations
 
 import inspect
@@ -20,12 +20,23 @@ from app.bot.keyboards.user import (
 )
 from app.bot.rendering import render_section
 from app.config import Settings
-from app.db.models import Tariff
+from app.db.models import Tariff, User
 from app.db.repositories.payments import PaymentRepository
 from app.db.repositories.tariffs import TariffRepository
 from app.db.repositories.users import UserRepository
 from app.services.audit import write_audit_log
+from app.services.conversion import (
+    CONVERSION_SOURCE_START_DEEP_LINK,
+    find_recent_conversion_source,
+    infer_menu_conversion_source,
+)
 from app.services.invites import InviteLinkError, issue_subscription_invite_link
+from app.services.multi_channel_access_service import load_active_product_access
+from app.services.offer_engine import (
+    OfferEngineSnapshot,
+    build_offer_engine_snapshot,
+    get_product_offer_lane,
+)
 from app.services.payments.crypto_pay import (
     CryptoPayDisabledError,
     CryptoPayError,
@@ -61,6 +72,7 @@ from app.services.tariffs import (
     ensure_tariff_purchase_allowed,
     tariff_badge_label,
     tariff_duration_label,
+    tariff_offer_expires_label,
 )
 from app.services.texts import render_text
 from app.utils.datetime import format_datetime
@@ -139,11 +151,13 @@ def _tariff_offer_markers(tariff: Tariff, *, baseline_tariff: Tariff) -> list[st
     details = build_offer_details(tariff, baseline_tariff=baseline_tariff)
     markers: list[str] = []
     if details.is_featured:
-        markers.append("🔥 Хит")
+        markers.append("?? ???")
     if details.is_default_offer:
-        markers.append("🎯 Рекомендуем")
+        markers.append("?? ???????????")
     if details.offer_group:
-        markers.append(f"🏷 {details.offer_group}")
+        markers.append(f"?? {details.offer_group}")
+    if details.is_limited_time and details.offer_expires_at is not None:
+        markers.append(f"? ?? {tariff_offer_expires_label(tariff) or 'UTC'}")
     return markers
 
 
@@ -197,21 +211,21 @@ async def _render_buy_section_text(
         baseline_tariff,
     )
     featured_details = build_offer_details(featured_tariff, baseline_tariff=baseline_tariff)
-    lines = [await _text(session, "user_tariffs"), "", "Рекомендуемый оффер:"]
+    lines = [await _text(session, "user_tariffs"), "", "????????????? ?????:"]
     lines.append(f"• {_compact_offer_line(featured_tariff, baseline_tariff=baseline_tariff)}")
     if featured_details.offer_copy:
         lines.append(f"• {escape(featured_details.offer_copy)}")
 
     alternatives = [tariff for tariff in tariffs if tariff.id != featured_tariff.id]
     if alternatives:
-        lines.extend(["", "Ещё варианты:"])
+        lines.extend(["", "??? ????????:"])
         preview_limit = 3
         for tariff in alternatives[:preview_limit]:
             lines.append(f"• {_compact_offer_line(tariff, baseline_tariff=baseline_tariff)}")
         remaining = len(alternatives) - min(len(alternatives), preview_limit)
         if remaining > 0:
             lines.append(f"• и ещё {remaining} офферов в списке ниже")
-        lines.extend(["", "Можно оплатить сразу быстрым оффером или выбрать любой другой тариф ниже."])
+        lines.extend(["", "????? ???????? ????? ??????? ??????? ??? ??????? ????? ?????? ????? ????."])
     return "\n".join(lines)
 
 
@@ -280,7 +294,7 @@ async def _render_payment_success_text(
     invite_expires_at: datetime | None = None,
     invite_error: str | None = None,
 ) -> str:
-    action = "Доступ продлён." if is_extension else "Доступ активирован."
+    action = "?????? ???????." if is_extension else "?????? ???????????."
     invite_block = ""
 
     if invite_link is not None:
@@ -321,16 +335,209 @@ async def _load_active_product_catalog(session: AsyncSession) -> list[ProductCat
     return build_product_catalog(tariffs)
 
 
-def _prepend_product_heading(text: str, product: ProductCatalogEntry) -> str:
-    heading = f"{FOLDER} Продукт: {escape(product.channel_title)}"
+async def _load_offer_engine_for_target(
+    session: AsyncSession,
+    *,
+    catalog: list[ProductCatalogEntry],
+    telegram_user_id: int | None,
+) -> OfferEngineSnapshot | None:
+    if not catalog:
+        return None
+    if telegram_user_id is None:
+        return build_offer_engine_snapshot(catalog)
+    user = await _load_conversion_user(session, telegram_user_id=telegram_user_id)
+    if user is None:
+        return build_offer_engine_snapshot(catalog)
+    active_products = await load_active_product_access(session, user_id=user.id)
+    primary_channel_id = active_products[0].channel_id if active_products else None
+    return build_offer_engine_snapshot(
+        catalog,
+        active_products=active_products,
+        primary_channel_id=primary_channel_id,
+    )
+
+
+def _compact_recommended_offer_line(offer) -> str:
+    parts = [
+        f"{escape(offer.tariff_name)} — {offer.price_stars} Stars",
+        offer.price_per_day_label,
+    ]
+    if offer.savings_label:
+        parts.append(offer.savings_label)
+    return " • ".join(parts)
+
+
+def _prepend_product_heading(
+    text: str,
+    product: ProductCatalogEntry,
+    *,
+    offer_lane=None,
+) -> str:
+    heading = (
+        f"{FOLDER} Продукт: {escape(product.channel_title)}"
+    )
     details: list[str] = []
     if product.price_range_label:
-        details.append(f"от {product.price_range_label}")
+        details.append(product.price_range_label)
     if product.bundle_names:
-        details.append(f"пакеты: {', '.join(product.bundle_names)}")
+        details.append(
+            f"пакеты: {', '.join(product.bundle_names)}"
+        )
+    hint_lines: list[str] = []
+    if offer_lane is not None and getattr(offer_lane, "hero_offer", None) is not None:
+        hint_lines.append(
+            f"🚀 {offer_lane.hero_offer.reason_label}: "
+            f"{offer_lane.hero_offer.tariff_name} — "
+            f"{offer_lane.hero_offer.price_stars} Stars"
+        )
+    if offer_lane is not None and getattr(offer_lane, "upgrade_offer", None) is not None:
+        hint_lines.append(
+            f"⬆️ Апгрейд: "
+            f"{offer_lane.upgrade_offer.tariff_name} — "
+            f"{offer_lane.upgrade_offer.price_stars} Stars"
+        )
+    if offer_lane is not None and getattr(offer_lane, "bundle_offer", None) is not None:
+        bundle_label = offer_lane.bundle_offer.offer_group or offer_lane.bundle_offer.tariff_name
+        hint_lines.append(f"📚 Пакет: {bundle_label}")
     if details:
         heading = f"{heading}\n<i>{escape(' • '.join(details))}</i>"
+    if hint_lines:
+        heading = f"{heading}\n" + "\n".join(hint_lines)
     return f"{heading}\n\n{text}"
+
+
+async def _load_conversion_user(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int | None,
+) -> User | None:
+    if telegram_user_id is None:
+        return None
+    return await UserRepository(session).get_by_telegram_id(telegram_user_id)
+
+
+async def _resolve_entry_source(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int | None,
+) -> str:
+    user = await _load_conversion_user(session, telegram_user_id=telegram_user_id)
+    return infer_menu_conversion_source(user)
+
+
+async def _resolve_recent_source_for_telegram_user(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int | None,
+    channel_id: int | None = None,
+    tariff_id: int | None = None,
+    actions: tuple[str, ...],
+) -> str:
+    user = await _load_conversion_user(session, telegram_user_id=telegram_user_id)
+    if user is None:
+        return infer_menu_conversion_source(None)
+    return await _resolve_recent_source(
+        session,
+        user=user,
+        channel_id=channel_id,
+        tariff_id=tariff_id,
+        actions=actions,
+    )
+
+
+async def _resolve_recent_source(
+    session: AsyncSession,
+    *,
+    user: User,
+    channel_id: int | None = None,
+    tariff_id: int | None = None,
+    actions: tuple[str, ...],
+) -> str:
+    fallback = infer_menu_conversion_source(user)
+    source = await find_recent_conversion_source(
+        session,
+        user_id=user.id,
+        channel_id=channel_id,
+        tariff_id=tariff_id,
+        actions=actions,
+        fallback=fallback,
+    )
+    return source or fallback
+
+
+async def _resolve_checkout_source(
+    session: AsyncSession,
+    *,
+    user: User,
+    tariff: Tariff,
+) -> str:
+    return await _resolve_recent_source(
+        session,
+        user=user,
+        channel_id=tariff.channel_id,
+        tariff_id=tariff.id,
+        actions=("product_selected", "buy_screen_viewed", "profile_opened"),
+    )
+
+
+async def _resolve_paid_source(
+    session: AsyncSession,
+    *,
+    user: User,
+    tariff: Tariff,
+) -> str:
+    return await _resolve_recent_source(
+        session,
+        user=user,
+        channel_id=tariff.channel_id,
+        tariff_id=tariff.id,
+        actions=(
+            "invoice_created_stars",
+            "invoice_created_crypto",
+            "offer_clicked",
+            "product_selected",
+            "buy_screen_viewed",
+            "profile_opened",
+        ),
+    )
+
+
+def _offer_click_payload(*, tariff: Tariff, source: str, payment_method: str) -> dict[str, object]:
+    return {
+        "source": source,
+        "payment_method": payment_method,
+        "offer_group": tariff.offer_group,
+        "is_featured": bool(tariff.is_featured),
+        "is_default_offer": bool(tariff.is_default_offer),
+    }
+
+
+async def _track_offer_click(
+    session: AsyncSession,
+    *,
+    telegram_user_id: int | None,
+    tariff: Tariff,
+    source: str,
+    payment_method: str,
+) -> None:
+    try:
+        await _track_funnel_event(
+            session,
+            event_name="offer_clicked",
+            telegram_user_id=telegram_user_id,
+            tariff=tariff,
+            extra_payload=_offer_click_payload(
+                tariff=tariff,
+                source=source,
+                payment_method=payment_method,
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to track offer_clicked for user %s and tariff %s",
+            telegram_user_id,
+            tariff.id,
+        )
 
 
 async def _track_funnel_event(
@@ -376,12 +583,14 @@ async def _render_product_picker_text(
     products: list[ProductCatalogEntry],
     *,
     mode: str,
+    offer_engine: OfferEngineSnapshot | None = None,
 ) -> str:
     if not products:
         return await _text(session, "tariffs_empty")
 
     lines: list[str] = []
     for index, product in enumerate(products, start=1):
+        offer_lane = get_product_offer_lane(offer_engine, product.channel_id)
         prefix: list[str] = []
         if product.featured_tariff_id is not None:
             prefix.append("🔥")
@@ -390,21 +599,54 @@ async def _render_product_picker_text(
         if product.bundle_names:
             prefix.append("📚")
         marker = f"{' '.join(prefix)} " if prefix else ""
-        heading = f"{FOLDER} Продукт: {escape(product.channel_title)}"
+        heading = (
+            f"{FOLDER} Продукт: {escape(product.channel_title)}"
+        )
         if mode == "buy":
             lines.append(f"{index}. {heading} — {marker}{product.price_range_label}")
         else:
-            tariff_label = "тариф" if product.tariff_count == 1 else ("тарифа" if product.tariff_count < 5 else "тарифов")
-            lines.append(f"{index}. {heading} — {marker}{product.tariff_count} {tariff_label}")
+            tariff_label = (
+                "тариф"
+                if product.tariff_count == 1
+                else (
+                    "тарифа"
+                    if product.tariff_count < 5
+                    else "тарифов"
+                )
+            )
+            lines.append(
+                f"{index}. {heading} — {marker}{product.tariff_count} {tariff_label}"
+            )
 
         baseline_tariff = pick_default_tariff(product.tariffs) or product.tariffs[0]
         lead_tariff = next(
             (tariff for tariff in product.tariffs if getattr(tariff, "is_featured", False)),
             baseline_tariff,
         )
-        lines.append(f"   • {_compact_offer_line(lead_tariff, baseline_tariff=baseline_tariff)}")
-        if product.bundle_names:
-            lines.append(f"   • пакеты: {', '.join(product.bundle_names)}")
+        lines.append(
+            f"   • {_compact_offer_line(lead_tariff, baseline_tariff=baseline_tariff)}"
+        )
+        if offer_lane is not None and offer_lane.upgrade_offer is not None and mode == "buy":
+            lines.append(
+                "   • "
+                f"апгрейд: "
+                f"{_compact_recommended_offer_line(offer_lane.upgrade_offer)}"
+            )
+        elif offer_lane is not None and offer_lane.hero_offer is not None:
+            lines.append(
+                "   • "
+                f"{offer_lane.hero_offer.reason_label}: "
+                f"{_compact_recommended_offer_line(offer_lane.hero_offer)}"
+            )
+        if offer_lane is not None and offer_lane.bundle_offer is not None:
+            bundle_label = offer_lane.bundle_offer.offer_group or offer_lane.bundle_offer.tariff_name
+            lines.append(
+                f"   • пакет: {bundle_label}"
+            )
+        elif product.bundle_names:
+            lines.append(
+                f"   • пакеты: {', '.join(product.bundle_names)}"
+            )
 
     key = "product_buy_picker" if mode == "buy" else "product_tariffs_picker"
     return await _text(session, key, products_block="\n".join(lines))
@@ -436,7 +678,7 @@ def _render_crypto_invoice_text(
 ) -> str:
     lines = []
     if is_reused:
-        lines.append(f"{RECYCLE} Использую уже созданный счёт Crypto Pay.")
+        lines.append(f"{RECYCLE} ????????? ??? ????????? ???? Crypto Pay.")
     else:
         lines.append(f"{MONEY} Счёт Crypto Pay создан.")
     lines.extend(
@@ -449,9 +691,9 @@ def _render_crypto_invoice_text(
         ]
     )
     if expires_at is not None:
-        lines.append(f"Оплатить до: {format_datetime(expires_at, timezone)}")
+        lines.append(f"???????? ??: {format_datetime(expires_at, timezone)}")
     if invoice_url:
-        lines.extend(["", "Открой кнопку ниже и заверши оплату в Crypto Pay."])
+        lines.extend(["", "?????? ?????? ???? ? ??????? ?????? ? Crypto Pay."])
     lines.extend(["", "После подтверждения платежа доступ активируется автоматически."])
     return "\n".join(lines)
 
@@ -464,12 +706,21 @@ async def render_buy_entrypoint(
     channel_id: int | None = None,
 ) -> bool:
     catalog = await _load_active_product_catalog(session)
+    offer_engine = await _load_offer_engine_for_target(
+        session,
+        catalog=catalog,
+        telegram_user_id=getattr(getattr(target, "from_user", None), "id", None),
+    )
     product = get_product_entry(catalog, channel_id) if channel_id is not None else None
     if channel_id is not None and product is not None:
         text = await _render_buy_section_text(session, product.tariffs)
         await render_section(
             target,
-            text=_prepend_product_heading(text, product),
+            text=_prepend_product_heading(
+                text,
+                product,
+                offer_lane=get_product_offer_lane(offer_engine, product.channel_id),
+            ),
             reply_markup=user_tariffs_keyboard(
                 product.tariffs,
                 mode="buy",
@@ -482,7 +733,12 @@ async def render_buy_entrypoint(
     if is_multi_product_catalog(catalog):
         await render_section(
             target,
-            text=await _render_product_picker_text(session, catalog, mode="buy"),
+            text=await _render_product_picker_text(
+                session,
+                catalog,
+                mode="buy",
+                offer_engine=offer_engine,
+            ),
             reply_markup=user_product_picker_keyboard(catalog, mode="buy"),
             banner_path=get_banner_path("buy"),
         )
@@ -506,6 +762,11 @@ async def render_tariffs_entrypoint(
     channel_id: int | None = None,
 ) -> bool:
     catalog = await _load_active_product_catalog(session)
+    offer_engine = await _load_offer_engine_for_target(
+        session,
+        catalog=catalog,
+        telegram_user_id=getattr(getattr(target, "from_user", None), "id", None),
+    )
     product = get_product_entry(catalog, channel_id) if channel_id is not None else None
     crypto_enabled = bool(settings.crypto_pay_enabled) if settings is not None else False
     accepted_assets = settings.crypto_pay_accepted_assets if settings is not None else []
@@ -518,7 +779,11 @@ async def render_tariffs_entrypoint(
         )
         await render_section(
             target,
-            text=_prepend_product_heading(text, product),
+            text=_prepend_product_heading(
+                text,
+                product,
+                offer_lane=get_product_offer_lane(offer_engine, product.channel_id),
+            ),
             reply_markup=user_tariffs_keyboard(
                 product.tariffs,
                 mode="browse",
@@ -531,7 +796,12 @@ async def render_tariffs_entrypoint(
     if is_multi_product_catalog(catalog):
         await render_section(
             target,
-            text=await _render_product_picker_text(session, catalog, mode="browse"),
+            text=await _render_product_picker_text(
+                session,
+                catalog,
+                mode="browse",
+                offer_engine=offer_engine,
+            ),
             reply_markup=user_product_picker_keyboard(catalog, mode="browse"),
             banner_path=get_banner_path("tariffs"),
         )
@@ -557,6 +827,7 @@ async def track_buy_entrypoint_view(
     *,
     telegram_user_id: int | None,
     channel_id: int | None = None,
+    source: str = CONVERSION_SOURCE_START_DEEP_LINK,
 ) -> None:
     catalog = await _load_active_product_catalog(session)
     product = get_product_entry(catalog, channel_id) if channel_id is not None else None
@@ -573,7 +844,7 @@ async def track_buy_entrypoint_view(
             "product_count": len(catalog),
             "tariff_count": sum(len(entry.tariffs) for entry in catalog),
             "multi_product": is_multi_product_catalog(catalog),
-            "source": "start_deep_link",
+            "source": source,
         },
     )
     if product is not None:
@@ -585,7 +856,7 @@ async def track_buy_entrypoint_view(
             extra_payload={
                 "product_title": product.channel_title,
                 "tariff_count": len(product.tariffs),
-                "source": "start_deep_link",
+                "source": source,
             },
         )
 
@@ -601,6 +872,10 @@ async def paysupport_command(
 @router.callback_query(F.data == "menu:user:buy")
 async def buy_section(callback: CallbackQuery, session: AsyncSession, settings: Settings) -> None:
     catalog = await _load_active_product_catalog(session)
+    source = await _resolve_entry_source(
+        session,
+        telegram_user_id=callback.from_user.id if callback.from_user is not None else None,
+    )
     await _track_funnel_event(
         session,
         event_name="buy_screen_viewed",
@@ -610,6 +885,7 @@ async def buy_section(callback: CallbackQuery, session: AsyncSession, settings: 
             "product_count": len(catalog),
             "tariff_count": sum(len(product.tariffs) for product in catalog),
             "multi_product": is_multi_product_catalog(catalog),
+            "source": source,
         },
     )
     await render_buy_entrypoint(callback, session, settings)
@@ -630,6 +906,12 @@ async def buy_product_section(
     if product is None:
         await callback.answer("Продукт недоступен.", show_alert=True)
         return
+    source = await _resolve_recent_source_for_telegram_user(
+        session,
+        telegram_user_id=callback.from_user.id if callback.from_user is not None else None,
+        channel_id=product.channel_id,
+        actions=("buy_screen_viewed", "product_selected", "profile_opened"),
+    )
     await _track_funnel_event(
         session,
         event_name="product_selected",
@@ -638,6 +920,7 @@ async def buy_product_section(
         extra_payload={
             "product_title": product.channel_title,
             "tariff_count": len(product.tariffs),
+            "source": source,
         },
     )
     await render_buy_entrypoint(
@@ -693,7 +976,16 @@ async def tariff_detail(callback: CallbackQuery, session: AsyncSession, settings
         event_name="tariff_detail_opened",
         telegram_user_id=callback.from_user.id if callback.from_user is not None else None,
         tariff=tariff,
-        extra_payload={"mode": "browse"},
+        extra_payload={
+            "mode": "browse",
+            "source": await _resolve_recent_source_for_telegram_user(
+                session,
+                telegram_user_id=callback.from_user.id if callback.from_user is not None else None,
+                channel_id=tariff.channel_id,
+                tariff_id=tariff.id,
+                actions=("product_selected", "buy_screen_viewed", "profile_opened"),
+            ),
+        },
     )
     await render_section(
         callback,
@@ -750,6 +1042,14 @@ async def buy_crypto_tariff(
             user_id=user.id,
             tariff=tariff,
         )
+        conversion_source = await _resolve_checkout_source(session, user=user, tariff=tariff)
+        await _track_offer_click(
+            session,
+            telegram_user_id=callback.from_user.id if callback.from_user is not None else None,
+            tariff=tariff,
+            source=conversion_source,
+            payment_method="crypto",
+        )
         result = await create_crypto_invoice(
             session,
             settings,
@@ -767,6 +1067,7 @@ async def buy_crypto_tariff(
                 "amount": str(result.remote_invoice.amount),
                 "external_id": result.invoice.external_id,
                 "is_reused": result.is_reused,
+                "source": conversion_source,
             },
         )
         await session.commit()
@@ -843,6 +1144,15 @@ async def buy_tariff(
         await callback.answer(str(exc), show_alert=True)
         return
 
+    conversion_source = await _resolve_checkout_source(session, user=user, tariff=tariff)
+    await _track_offer_click(
+        session,
+        telegram_user_id=callback.from_user.id if callback.from_user is not None else None,
+        tariff=tariff,
+        source=conversion_source,
+        payment_method="stars",
+    )
+
     promo_quote = await get_pending_discount_quote_for_tariff(
         session,
         user_id=user.id,
@@ -872,6 +1182,7 @@ async def buy_tariff(
             "tariff_id": tariff.id,
             "channel_id": tariff.channel_id,
             "amount": invoice_amount,
+            "source": conversion_source,
         }
         if promo_quote is not None:
             payload.update(
@@ -1012,12 +1323,14 @@ async def successful_payment_handler(
                 used_at=message.date,
             )
         if not result.is_duplicate:
+            conversion_source = await _resolve_paid_source(session, user=user, tariff=tariff)
             payload_dict = {
                 "tariff_id": tariff.id,
                 "channel_id": tariff.channel_id,
                 "amount": message.successful_payment.total_amount,
                 "telegram_payment_charge_id": message.successful_payment.telegram_payment_charge_id,
                 "is_extension": result.is_extension,
+                "source": conversion_source,
             }
             if promo_quote is not None:
                 payload_dict.update(
@@ -1060,7 +1373,7 @@ async def successful_payment_handler(
             await _text(
                 session,
                 "payment_failed",
-                reason="техническая ошибка при обработке платежа",
+                reason="??????????? ?????? ??? ????????? ???????",
             )
         )
         await message.answer(await _text(session, "payment_support"))
@@ -1075,7 +1388,7 @@ async def successful_payment_handler(
             await _text(
                 session,
                 "payment_failed",
-                reason="оплата прошла, но подписка ещё не активировалась автоматически",
+                reason="?????? ??????, ?? ???????? ??? ?? ?????????????? ?????????????",
             )
         )
         await message.answer(await _text(session, "payment_support"))
@@ -1134,3 +1447,7 @@ async def successful_payment_handler(
     )
     if invite_link is not None and invite_reused:
         await message.answer("Ссылка уже была активна, поэтому я отправил действующий инвайт повторно.")
+
+
+
+

@@ -3,17 +3,20 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from app.services.product_service import (
+    build_catalog_recommendations,
     build_offer_details,
     build_product_catalog,
     get_product_entry,
     is_multi_product_catalog,
     pick_default_tariff,
     pick_featured_tariff,
+    recommended_tariff_for_entry,
+    recommended_tariff_for_product,
 )
 
-MAIN_TITLE = "\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u043a\u0430\u043d\u0430\u043b"
-VIP_TITLE = "VIP-\u0447\u0430\u0442"
-FALLBACK_TITLE = "\u041f\u0440\u043e\u0434\u0443\u043a\u0442 #77"
+MAIN_TITLE = "Основной канал"
+VIP_TITLE = "VIP-чат"
+FALLBACK_TITLE = "Продукт #77"
 
 
 def test_build_product_catalog_groups_tariffs_by_channel() -> None:
@@ -47,13 +50,13 @@ def test_build_product_catalog_groups_tariffs_by_channel() -> None:
     assert catalog[0].tariff_count == 2
     assert catalog[0].price_from_stars == 150
     assert catalog[0].price_to_stars == 250
-    assert catalog[0].price_range_label == "\u043e\u0442 150\u2b50"
+    assert catalog[0].price_range_label == "от 150⭐"
     assert [tariff.id for tariff in catalog[0].tariffs] == [1, 2]
 
     vip = get_product_entry(catalog, 20)
     assert vip is not None
     assert vip.channel_title == VIP_TITLE
-    assert vip.price_range_label == "500\u2b50"
+    assert vip.price_range_label == "500⭐"
 
 
 def test_build_product_catalog_uses_safe_fallback_title() -> None:
@@ -71,6 +74,7 @@ def test_build_product_catalog_uses_safe_fallback_title() -> None:
     assert len(catalog) == 1
     assert catalog[0].channel_title == FALLBACK_TITLE
     assert is_multi_product_catalog(catalog) is False
+
 
 def test_featured_and_default_tariffs_are_detected() -> None:
     tariffs = [
@@ -150,4 +154,90 @@ def test_build_product_catalog_exposes_offer_flags() -> None:
 
     assert catalog[0].default_tariff_id == 11
     assert catalog[0].featured_tariff_id == 12
+    assert catalog[0].recommended_tariff_id == 12
     assert catalog[0].bundle_names == ("Base",)
+
+
+def test_recommended_tariff_prefers_featured_then_default() -> None:
+    default = SimpleNamespace(
+        id=21,
+        channel_id=10,
+        price_stars=199,
+        duration_days=30,
+        is_trial=False,
+        is_default_offer=True,
+        is_featured=False,
+    )
+    featured = SimpleNamespace(
+        id=22,
+        channel_id=10,
+        price_stars=499,
+        duration_days=90,
+        is_trial=False,
+        is_default_offer=False,
+        is_featured=True,
+    )
+    entry = build_product_catalog(
+        [
+            SimpleNamespace(
+                **default.__dict__,
+                channel=SimpleNamespace(title=MAIN_TITLE, username="main"),
+            ),
+            SimpleNamespace(
+                **featured.__dict__,
+                channel=SimpleNamespace(title=MAIN_TITLE, username="main"),
+            ),
+        ]
+    )[0]
+
+    assert recommended_tariff_for_product([default, featured]) is featured
+    assert recommended_tariff_for_entry(entry).id == 22
+
+
+def test_build_catalog_recommendations_prefers_primary_renewal_and_cross_sell() -> None:
+    tariffs = [
+        SimpleNamespace(
+            id=31,
+            channel_id=10,
+            name="Main 30",
+            price_stars=250,
+            duration_days=30,
+            sort_order=10,
+            is_trial=False,
+            is_default_offer=True,
+            is_featured=False,
+            offer_copy="Базовый доступ",
+            offer_group="Base",
+            channel=SimpleNamespace(title=MAIN_TITLE, username="main"),
+        ),
+        SimpleNamespace(
+            id=32,
+            channel_id=20,
+            name="VIP 90",
+            price_stars=700,
+            duration_days=90,
+            sort_order=20,
+            is_trial=False,
+            is_default_offer=False,
+            is_featured=True,
+            offer_copy="Премиум доступ",
+            offer_group="VIP",
+            channel=SimpleNamespace(title=VIP_TITLE, username="vip"),
+        ),
+    ]
+
+    catalog = build_product_catalog(tariffs)
+    recommendations = build_catalog_recommendations(
+        catalog,
+        active_channel_ids=[10],
+        primary_channel_id=10,
+    )
+
+    assert recommendations.primary_offer is not None
+    assert recommendations.primary_offer.channel_id == 10
+    assert recommendations.primary_offer.reason_code == "renew_current"
+    assert recommendations.renewal_offer is not None
+    assert recommendations.renewal_offer.channel_id == 10
+    assert recommendations.cross_sell_offers
+    assert recommendations.cross_sell_offers[0].channel_id == 20
+    assert recommendations.cross_sell_offers[0].reason_code == "cross_sell"

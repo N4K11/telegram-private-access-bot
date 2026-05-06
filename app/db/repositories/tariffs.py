@@ -60,6 +60,7 @@ class TariffRepository:
             badge=draft.badge,
             offer_copy=draft.offer_copy,
             offer_group=draft.offer_group,
+            offer_expires_at=draft.offer_expires_at,
             is_trial=draft.is_trial,
             is_lifetime=draft.is_lifetime,
             is_featured=draft.is_featured,

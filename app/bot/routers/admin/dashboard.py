@@ -9,9 +9,9 @@ from app.bot.assets import get_banner_path
 from app.bot.filters.admin import AdminFilter
 from app.bot.keyboards.admin import admin_main_menu_keyboard, admin_section_keyboard
 from app.bot.rendering import render_section
-from app.services.admin_home import build_admin_home_snapshot
 from app.bot.routers.common import edit_or_answer
 from app.config import Settings
+from app.services.admin_home import build_admin_home_snapshot
 from app.services.admin_roles import (
     allowed_admin_menu_sections,
     get_admin_section_title,

@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+﻿# ruff: noqa: E501
 from __future__ import annotations
 
 import asyncio
@@ -23,6 +23,7 @@ from app.db.repositories.payments import PaymentRepository
 from app.db.repositories.subscriptions import SubscriptionRepository
 from app.db.repositories.tariffs import TariffRepository
 from app.services.audit import write_audit_log
+from app.services.conversion import CONVERSION_SOURCE_UNKNOWN, find_recent_conversion_source
 from app.services.observability import EVENT_PAYMENT_CRYPTO_PAID
 from app.services.referral_service import (
     consume_pending_referral_reward_days,
@@ -384,6 +385,14 @@ async def sync_crypto_invoice(
     )
     invoice.paid_at = paid_at
     invoice.status = "paid"
+    conversion_source = await find_recent_conversion_source(
+        session,
+        user_id=invoice.user_id,
+        channel_id=tariff.channel_id,
+        tariff_id=invoice.tariff_id,
+        actions=("invoice_created_crypto", "product_selected", "buy_screen_viewed", "profile_opened"),
+        fallback=CONVERSION_SOURCE_UNKNOWN,
+    )
     await write_audit_log(
         session,
         action="payment_paid_crypto",
@@ -394,6 +403,7 @@ async def sync_crypto_invoice(
             "tariff_id": invoice.tariff_id,
             "asset": remote.asset,
             "amount": str(remote.amount),
+            "source": conversion_source,
         },
     )
     await write_audit_log(
@@ -623,4 +633,5 @@ def _stringify_payload_value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
 

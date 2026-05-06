@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import inspect
 import logging
@@ -30,6 +30,8 @@ from app.db.models import Subscription, User
 from app.db.repositories.subscriptions import SubscriptionRepository
 from app.db.repositories.users import UserRepository
 from app.services.admin_roles import is_admin_role, resolve_role_from_user
+from app.services.audit import write_audit_log
+from app.services.conversion import start_navigation_source
 from app.services.onboarding import (
     advance_onboarding,
     complete_onboarding,
@@ -356,6 +358,39 @@ async def _maybe_handle_start_navigation(
     return False
 
 
+async def _track_start_event(
+    message: Message,
+    *,
+    session: AsyncSession | None,
+    user: User | None,
+) -> None:
+    if session is None or user is None:
+        return
+
+    payload = _extract_start_payload(getattr(message, "text", None))
+    navigation = _resolve_start_navigation_action(payload)
+    action_name = navigation[0] if navigation is not None else None
+    channel_id = navigation[1] if navigation is not None else None
+    is_referral = payload is not None and payload.lower().startswith("ref_")
+    audit_payload: dict[str, object] = {
+        "source": start_navigation_source(action_name, is_referral=is_referral),
+    }
+    if action_name is not None:
+        audit_payload["entrypoint"] = action_name
+    if channel_id is not None:
+        audit_payload["channel_id"] = channel_id
+    if is_referral:
+        audit_payload["referral_code"] = payload
+
+    await write_audit_log(
+        session,
+        action="user_start",
+        target_user_id=user.id,
+        payload=audit_payload,
+    )
+    await session.commit()
+
+
 async def _render_home_section(
     event: Message | CallbackQuery,
     *,
@@ -439,6 +474,7 @@ async def start_handler(
     user = await _ensure_db_user(session, message.from_user, settings)
     user = user or await _load_db_user(session, message.from_user.id if message.from_user else None)
     referral_message = await _maybe_process_start_referral(message, session=session, user=user)
+    await _track_start_event(message, session=session, user=user)
     if await _maybe_handle_start_navigation(
         message,
         session=session,
@@ -596,3 +632,7 @@ async def invite_section(
         settings=settings,
         user=user,
     )
+
+
+
+

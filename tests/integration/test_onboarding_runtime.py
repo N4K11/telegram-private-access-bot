@@ -1,15 +1,17 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
 import pytest_asyncio
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.routers.user.payments import buy_section
 from app.bot.routers.user.start import onboarding_next, onboarding_skip, start_handler
 from app.config import Settings
 from app.db.base import Base
-from app.db.models import Channel, Tariff, User
+from app.db.models import AuditLog, Channel, Tariff, User
 from app.db.repositories.users import UserRepository
 from app.db.session import create_async_engine, create_session_factory
 
@@ -128,7 +130,7 @@ async def test_start_handler_shows_onboarding_to_new_user(
     session: AsyncSession,
     settings: Settings,
 ) -> None:
-    message = DummyMessage("/start", user_id=2001, first_name="Руслан", username="ruslan")
+    message = DummyMessage("/start", user_id=2001, first_name="Р СѓСЃР»Р°РЅ", username="ruslan")
 
     await start_handler(message, session, settings)
 
@@ -144,11 +146,11 @@ async def test_onboarding_next_persists_progress(
     settings: Settings,
 ) -> None:
     await start_handler(
-        DummyMessage("/start", user_id=2002, first_name="Руслан", username="ruslan"),
+        DummyMessage("/start", user_id=2002, first_name="Р СѓСЃР»Р°РЅ", username="ruslan"),
         session,
         settings,
     )
-    callback = DummyCallback("menu:user:onboarding:next", user_id=2002, first_name="Руслан")
+    callback = DummyCallback("menu:user:onboarding:next", user_id=2002, first_name="Р СѓСЃР»Р°РЅ")
 
     await onboarding_next(callback, session, settings)
 
@@ -166,11 +168,11 @@ async def test_onboarding_skip_stops_repeat_on_future_start(
     settings: Settings,
 ) -> None:
     await start_handler(
-        DummyMessage("/start", user_id=2003, first_name="Руслан", username="ruslan"),
+        DummyMessage("/start", user_id=2003, first_name="Р СѓСЃР»Р°РЅ", username="ruslan"),
         session,
         settings,
     )
-    callback = DummyCallback("menu:user:onboarding:skip", user_id=2003, first_name="Руслан")
+    callback = DummyCallback("menu:user:onboarding:skip", user_id=2003, first_name="Р СѓСЃР»Р°РЅ")
 
     await onboarding_skip(callback, session, settings)
 
@@ -181,7 +183,7 @@ async def test_onboarding_skip_stops_repeat_on_future_start(
     assert user is not None
     assert user.onboarding_completed_at is not None
 
-    follow_up = DummyMessage("/start", user_id=2003, first_name="Руслан", username="ruslan")
+    follow_up = DummyMessage("/start", user_id=2003, first_name="Р СѓСЃР»Р°РЅ", username="ruslan")
     await start_handler(follow_up, session, settings)
 
     assert len(follow_up.photo_calls) == 1
@@ -219,7 +221,7 @@ async def test_start_buy_deep_link_bypasses_onboarding(
 ) -> None:
     await _seed_tariff(session)
 
-    message = DummyMessage("/start buy", user_id=2005, first_name="Руслан", username="ruslan")
+    message = DummyMessage("/start buy", user_id=2005, first_name="Р СѓСЃР»Р°РЅ", username="ruslan")
     await start_handler(message, session, settings)
 
     assert len(message.photo_calls) == 1
@@ -245,7 +247,7 @@ async def test_start_buy_product_deep_link_renders_selected_product(
     message = DummyMessage(
         f"/start buy_{vip_channel.id}",
         user_id=2006,
-        first_name="Руслан",
+        first_name="Р СѓСЃР»Р°РЅ",
         username="ruslan",
     )
     await start_handler(message, session, settings)
@@ -255,3 +257,28 @@ async def test_start_buy_product_deep_link_renders_selected_product(
     assert caption is not None
     assert "Шаг 1/3" not in caption
     assert "VIP chat" in caption
+
+async def test_onboarding_buy_entrypoint_is_tracked_with_onboarding_source(
+    session: AsyncSession,
+    settings: Settings,
+) -> None:
+    await _seed_tariff(session)
+    await start_handler(
+        DummyMessage("/start", user_id=2010, first_name="Руслан", username="ruslan"),
+        session,
+        settings,
+    )
+    callback = DummyCallback("menu:user:buy", user_id=2010, first_name="Руслан")
+
+    await buy_section(callback, session, settings)
+
+    result = await session.execute(
+        select(AuditLog.payload)
+        .where(AuditLog.action == "buy_screen_viewed")
+        .order_by(AuditLog.id.desc())
+        .limit(1)
+    )
+    payload = result.scalar_one()
+    assert payload is not None
+    assert '"source": "onboarding"' in payload
+

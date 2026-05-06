@@ -1,11 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.db.models import Tariff
+from app.services.tariffs import is_limited_offer_active
 from app.utils.encoding import safe_ui_text
 
 TXT_PRODUCT = "Продукт"
@@ -23,6 +25,8 @@ class TariffOfferDetails:
     offer_group: str | None
     is_featured: bool
     is_default_offer: bool
+    is_limited_time: bool
+    offer_expires_at: datetime | None
 
 
 @dataclass(slots=True)
@@ -36,6 +40,7 @@ class ProductCatalogEntry:
     price_to_stars: int
     featured_tariff_id: int | None
     default_tariff_id: int | None
+    recommended_tariff_id: int | None
     bundle_names: tuple[str, ...]
 
     @property
@@ -43,6 +48,32 @@ class ProductCatalogEntry:
         if self.price_from_stars == self.price_to_stars:
             return f"{self.price_from_stars}{EMOJI_STARS}"
         return f"{TXT_FROM} {self.price_from_stars}{EMOJI_STARS}"
+
+
+@dataclass(slots=True)
+class RecommendedTariffOffer:
+    channel_id: int
+    channel_title: str
+    tariff_id: int
+    tariff_name: str
+    price_stars: int
+    price_per_day_label: str
+    savings_label: str | None
+    offer_copy: str | None
+    offer_group: str | None
+    is_featured: bool
+    is_default_offer: bool
+    is_limited_time: bool
+    offer_expires_at: datetime | None
+    reason_code: str
+    reason_label: str
+
+
+@dataclass(slots=True)
+class CatalogRecommendations:
+    primary_offer: RecommendedTariffOffer | None
+    renewal_offer: RecommendedTariffOffer | None
+    cross_sell_offers: tuple[RecommendedTariffOffer, ...]
 
 
 def build_product_catalog(tariffs: Sequence[Tariff]) -> list[ProductCatalogEntry]:
@@ -69,6 +100,7 @@ def build_product_catalog(tariffs: Sequence[Tariff]) -> list[ProductCatalogEntry
         prices = [int(tariff.price_stars) for tariff in ordered_tariffs]
         featured_tariff = pick_featured_tariff(ordered_tariffs)
         default_tariff = pick_default_tariff(ordered_tariffs)
+        recommended_tariff = recommended_tariff_for_product(ordered_tariffs)
         bundle_names = tuple(
             dict.fromkeys(
                 group_name
@@ -93,6 +125,9 @@ def build_product_catalog(tariffs: Sequence[Tariff]) -> list[ProductCatalogEntry
                 ),
                 default_tariff_id=(
                     default_tariff.id if default_tariff is not None else None
+                ),
+                recommended_tariff_id=(
+                    recommended_tariff.id if recommended_tariff is not None else None
                 ),
                 bundle_names=bundle_names,
             )
@@ -141,12 +176,27 @@ def pick_default_tariff(tariffs: Sequence[Tariff]) -> Tariff | None:
     )
 
 
+def recommended_tariff_for_product(tariffs: Sequence[Tariff]) -> Tariff | None:
+    featured = pick_featured_tariff(tariffs)
+    if featured is not None:
+        return featured
+    return pick_default_tariff(tariffs)
+
+
+def recommended_tariff_for_entry(product: ProductCatalogEntry) -> Tariff | None:
+    if not product.tariffs:
+        return None
+    return recommended_tariff_for_product(product.tariffs)
+
+
 def build_offer_details(
     tariff: Tariff,
     *,
     baseline_tariff: Tariff | None,
+    now: datetime | None = None,
 ) -> TariffOfferDetails:
     baseline = baseline_tariff if baseline_tariff is not None else tariff
+    is_limited_time = is_limited_offer_active(tariff, now=now)
     return TariffOfferDetails(
         tariff_id=int(tariff.id),
         price_per_day_label=price_per_day_label(tariff),
@@ -155,6 +205,143 @@ def build_offer_details(
         offer_group=normalize_offer_group(getattr(tariff, "offer_group", None)),
         is_featured=bool(getattr(tariff, "is_featured", False)),
         is_default_offer=bool(getattr(tariff, "is_default_offer", False)),
+        is_limited_time=is_limited_offer_active(tariff, now=now),
+        offer_expires_at=(getattr(tariff, "offer_expires_at", None) if is_limited_time else None),
+    )
+
+
+def build_catalog_recommendations(
+    catalog: Sequence[ProductCatalogEntry],
+    *,
+    active_channel_ids: Sequence[int] = (),
+    primary_channel_id: int | None = None,
+    cross_sell_limit: int = 3,
+) -> CatalogRecommendations:
+    if not catalog:
+        return CatalogRecommendations(
+            primary_offer=None,
+            renewal_offer=None,
+            cross_sell_offers=(),
+        )
+
+    active_set = {int(channel_id) for channel_id in active_channel_ids}
+    by_channel = {entry.channel_id: entry for entry in catalog}
+
+    primary_entry = (
+        by_channel.get(primary_channel_id) if primary_channel_id is not None else None
+    )
+    if primary_entry is None and active_set:
+        primary_entry = next(
+            (entry for entry in catalog if entry.channel_id in active_set),
+            None,
+        )
+    if primary_entry is None:
+        primary_entry = next(
+            (entry for entry in catalog if entry.channel_id not in active_set),
+            catalog[0],
+        )
+
+    primary_offer = None
+    if primary_entry is not None:
+        if primary_entry.channel_id in active_set:
+            primary_offer = build_recommended_offer(
+                primary_entry,
+                reason_code="renew_current",
+                reason_label="Продлить текущий доступ",
+            )
+        elif primary_channel_id is not None:
+            primary_offer = build_recommended_offer(
+                primary_entry,
+                reason_code="return_primary",
+                reason_label="Вернуться в основной продукт",
+            )
+        elif active_set:
+            primary_offer = build_recommended_offer(
+                primary_entry,
+                reason_code="expand_catalog",
+                reason_label="Докупить ещё продукт",
+            )
+        else:
+            primary_offer = build_recommended_offer(
+                primary_entry,
+                reason_code="start_here",
+                reason_label="Рекомендуем начать с этого оффера",
+            )
+
+    renewal_entry = None
+    if primary_channel_id is not None and primary_channel_id in active_set:
+        renewal_entry = by_channel.get(primary_channel_id)
+    if renewal_entry is None:
+        renewal_entry = next(
+            (entry for entry in catalog if entry.channel_id in active_set),
+            None,
+        )
+    renewal_offer = (
+        build_recommended_offer(
+            renewal_entry,
+            reason_code="renewal",
+            reason_label="Лучший оффер для продления",
+        )
+        if renewal_entry is not None
+        else None
+    )
+
+    cross_sell_offers: list[RecommendedTariffOffer] = []
+    for entry in catalog:
+        if entry.channel_id in active_set:
+            continue
+        if primary_offer is not None and entry.channel_id == primary_offer.channel_id:
+            continue
+        offer = build_recommended_offer(
+            entry,
+            reason_code="cross_sell",
+            reason_label="Можно докупить как следующий продукт",
+        )
+        if offer is None:
+            continue
+        cross_sell_offers.append(offer)
+        if len(cross_sell_offers) >= max(int(cross_sell_limit), 0):
+            break
+
+    return CatalogRecommendations(
+        primary_offer=primary_offer,
+        renewal_offer=renewal_offer,
+        cross_sell_offers=tuple(cross_sell_offers),
+    )
+
+
+def build_recommended_offer(
+    product: ProductCatalogEntry | None,
+    *,
+    reason_code: str,
+    reason_label: str,
+) -> RecommendedTariffOffer | None:
+    if product is None:
+        return None
+    recommended_tariff = recommended_tariff_for_entry(product)
+    if recommended_tariff is None:
+        return None
+    baseline_tariff = pick_default_tariff(product.tariffs) or recommended_tariff
+    details = build_offer_details(recommended_tariff, baseline_tariff=baseline_tariff)
+    return RecommendedTariffOffer(
+        channel_id=product.channel_id,
+        channel_title=product.channel_title,
+        tariff_id=int(recommended_tariff.id),
+        tariff_name=safe_ui_text(
+            getattr(recommended_tariff, "name", None),
+            f"Тариф #{getattr(recommended_tariff, 'id', '?')}",
+        ),
+        price_stars=int(getattr(recommended_tariff, "price_stars", 0) or 0),
+        price_per_day_label=details.price_per_day_label,
+        savings_label=details.savings_label,
+        offer_copy=details.offer_copy,
+        offer_group=details.offer_group,
+        is_featured=details.is_featured,
+        is_default_offer=details.is_default_offer,
+        is_limited_time=details.is_limited_time,
+        offer_expires_at=details.offer_expires_at,
+        reason_code=reason_code,
+        reason_label=reason_label,
     )
 
 

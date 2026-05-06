@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCAN_RELATIVE_PATHS = (
     "app",
     "tests",
+    "web",
     "README.md",
     "DEPLOY.md",
     "TESTING.md",

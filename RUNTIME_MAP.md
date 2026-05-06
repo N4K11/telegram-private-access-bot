@@ -14,9 +14,9 @@
   - `POST WEBHOOK_PATH` for Telegram updates;
   - `GET /healthz` for liveness;
   - `GET /readyz` for readiness.
-- `app.webapp.handlers` serves the Mini App page at `MINI_APP_PATH` and strict auth APIs under `MINI_APP_PATH/api/*`, including admin dashboard/users/payments/support endpoints and the Mini App channel-check action.
-- `app.services.web_cabinet` serializes the user cabinet payload: profile, grouped products, active product access, flat tariffs, recent payments, referrals, pending promos, support state and Telegram deep-link actions.
-- `app.services.web_admin_dashboard` serializes the Mini App admin dashboard, filterable users/payments/support payloads, ticket detail context, safe overview cards and the live channel-check action result.
+- `app.webapp.handlers` serves the Mini App page at `MINI_APP_PATH` and strict auth APIs under `MINI_APP_PATH/api/*`, including admin dashboard/users/payments/support endpoints, the Mini App lifecycle analytics console and the Mini App channel-check action.
+- `app.services.web_cabinet` serializes the user cabinet payload: profile, grouped products, recommended offers, active product access, flat tariffs, recent payments, referrals, pending promos, support state, lifecycle analytics slices and Telegram deep-link actions.
+- `app.services.web_admin_dashboard` serializes the Mini App admin dashboard, filterable users/payments/support payloads, support insights with SLA hotspots/SLA actions/pack outcomes/close-reason trends/action lanes/escalation lanes/escalation-action mix/priority handling/escalation watchlist/escalation trends/operator action trends, a dedicated support insights console payload, ticket detail context with pinned operator summary, escalation hints, primary action-lane metadata, escalation-lane metadata, canned replies/close-reason analytics, safe overview cards, acquisition/lifecycle ROI payloads, pricing intelligence and the live channel-check action result.
 - In webhook mode the runtime registers `PUBLIC_WEBHOOK_URL + WEBHOOK_PATH` via `setWebhook` and can optionally call `deleteWebhook` on shutdown.
 
 ## Runtime state and telemetry
@@ -47,6 +47,8 @@
 - `app.services.content_service` - registry and safe rendering for FAQ/content pages.
 - `app.services.channel_guard_service` - background protection for active channels with deduplicated admin alerts.
 - `app.services.report_service` - scheduled daily/weekly admin KPI reports with duplicate protection.
+- `app.services.retention_automation` - lifecycle retention segmentation, dedupe windows and Telegram lifecycle messaging.
+- `app.services.lifecycle_campaign_rules` - managed lifecycle wave registry for renewal, grace, final reactivation, trial recovery and win-back offer policy.
 - `app.services.legal_texts` - registry of managed legal texts for terms, privacy, refund policy and payment support.
 - `app.services.audit` - audit write helper, filter normalization, payload redaction and CSV export for admins.
 - `app.db.repositories.support_tickets` - support ticket and support message persistence helpers.
@@ -55,7 +57,7 @@
 - `app.bot.routers.admin.crypto` - `/admin_crypto_invoices`, `/admin_crypto_diag` and the admin payments dashboard callback.
 - `app.bot.routers.admin.channels` - channel CRUD and refresh.
 - `app.bot.routers.admin.tariffs` - tariff CRUD.
-- `app.bot.routers.admin.analytics` - analytics snapshot and users entry points.
+- `app.bot.routers.admin.analytics` - analytics snapshot, acquisition ROI plus lifecycle source quality, lifecycle ROI/highlights/source ROI/opportunities/leaders/watchlist, pricing intelligence and users entry points.
 - `app.bot.routers.admin.users` - user directory for allowed admin roles plus owner/admin-only blocking, manual grants and direct message.
 - `app.services.admin_roles` - role normalization, `ADMIN_IDS` owner fallback, permission checks and admin menu section policy.
 - `app.services.observability` - structured event names, runtime error sanitization and admin observability report builder.
@@ -69,7 +71,7 @@
 - `app.workers.payment_reconciler` - placeholder module for Crypto Pay reconciliation wiring.
 - `app.workers.broadcast_sender` - broadcast queue sender with isolated per-user failures and rate-limited delivery accounting.
 - `app.workers.backup_worker` - scheduled backup and retention.
-- `app.workers.scheduler` - worker orchestrator, `channel_guard`, `admin_reports` and last-maintenance telemetry.
+- `app.workers.scheduler` - worker orchestrator, `channel_guard`, `admin_reports`, `retention_automation` and last-maintenance telemetry.
 - Workers run in both polling and webhook modes.
 
 ## Persistent data

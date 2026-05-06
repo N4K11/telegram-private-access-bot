@@ -107,6 +107,20 @@ async def test_profile_callback_renders_profile_and_history_button(session: Asyn
     now = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
     user, channel, tariff = await _seed_user_channel_tariff(session)
     session.add(
+        Tariff(
+            name="VIP 90",
+            price_stars=600,
+            duration_days=90,
+            sort_order=20,
+            is_active=True,
+            channel_id=channel.id,
+            offer_group="Base",
+            offer_copy="?????? ????? ?? ???? ??????",
+            offer_expires_at=now + timedelta(days=5),
+        )
+    )
+    await session.flush()
+    session.add(
         Subscription(
             user_id=user.id,
             tariff_id=tariff.id,

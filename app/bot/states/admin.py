@@ -1,4 +1,4 @@
-from aiogram.fsm.state import State, StatesGroup
+﻿from aiogram.fsm.state import State, StatesGroup
 
 
 class AdminTextEditor(StatesGroup):
@@ -23,6 +23,7 @@ class AdminTariffForm(StatesGroup):
     waiting_for_new_badge = State()
     waiting_for_new_offer_copy = State()
     waiting_for_new_offer_group = State()
+    waiting_for_new_offer_expires_at = State()
     waiting_for_new_channel = State()
 
 

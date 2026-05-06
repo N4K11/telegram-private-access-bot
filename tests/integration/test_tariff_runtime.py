@@ -365,5 +365,5 @@ async def test_buy_keyboard_adds_quick_start_for_featured_tariff(session: AsyncS
 
     _, markup = callback.message.edit_calls[0]
     button_texts = _flatten_button_texts(markup)
-    assert button_texts[0].startswith("?? ������� �����")
+    assert button_texts[0].startswith("🔥 Быстрый старт: Featured 90")
     assert any("Standard 30" in value for value in button_texts)

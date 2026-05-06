@@ -1,18 +1,29 @@
 ﻿from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings
 from app.db.base import Base
-from app.db.models import Channel, Subscription, Tariff, User
+from app.db.models import AuditLog, Channel, Subscription, Tariff, User
 from app.db.session import create_async_engine, create_session_factory
 from app.services.subscriptions import activate_or_extend_subscription
 from app.workers.subscription_expirer import (
     process_expired_subscriptions,
     remove_user_from_channel,
 )
+
+
+def _decode_payload(raw_payload):
+    if raw_payload is None:
+        return {}
+    if isinstance(raw_payload, str):
+        return json.loads(raw_payload or "{}")
+    return raw_payload
 
 
 class RecordingBot:
@@ -152,8 +163,15 @@ async def test_process_expired_subscriptions_sends_3d_warning_once() -> None:
             expires_at=now + timedelta(days=2, hours=12),
         )
         bot = RecordingBot()
+        settings = Settings.model_validate(
+            {
+                "bot_token": "123:token",
+                "admin_ids": [1],
+                "bot_public_username": "privatair_bot",
+            }
+        )
 
-        first = await process_expired_subscriptions(session, bot, now=now)
+        first = await process_expired_subscriptions(session, bot, now=now, settings=settings)
         second = await process_expired_subscriptions(session, bot, now=now + timedelta(hours=1))
 
         refreshed = await session.get(Subscription, subscription.id)
@@ -163,7 +181,77 @@ async def test_process_expired_subscriptions_sends_3d_warning_once() -> None:
         assert refreshed is not None
         assert refreshed.warning_3d_sent_at == now
         assert [name for name, _ in bot.calls] == ["notify"]
-        assert "3 дней" in bot.calls[0][1]["text"] or "3 дня" in bot.calls[0][1]["text"]
+        assert "VIP 42" in bot.calls[0][1]["text"]
+        assert "start=buy_1" in bot.calls[0][1]["text"]
+        audit_row = _decode_payload((
+            await session.execute(
+                select(AuditLog.payload).where(AuditLog.action == "subscription_warning_3d_sent")
+            )
+        ).scalar_one())
+        assert audit_row["campaign_variant"] == "renewal_3d"
+        assert audit_row["offer_mode"] == "renewal"
+        assert audit_row["recommended_reason_code"] == "renewal"
+        assert audit_row["campaign_rule_key"] == "renewal_wave"
+        assert audit_row["campaign_family"] == "renewal"
+    finally:
+        await _close_session(session, engine)
+
+
+async def test_process_expired_subscriptions_prefers_limited_renewal_offer() -> None:
+    session, engine = await _create_session()
+    try:
+        now = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+        _user, tariff, subscription = await _seed_subscription(
+            session,
+            started_at=now - timedelta(days=10),
+            expires_at=now + timedelta(days=2, hours=12),
+        )
+        tariff.is_default_offer = True
+        tariff.offer_group = "Base"
+        session.add(
+            Tariff(
+                name="VIP 90",
+                price_stars=600,
+                duration_days=90,
+                sort_order=20,
+                is_active=True,
+                channel_id=tariff.channel_id,
+                offer_group="Base",
+                offer_expires_at=now + timedelta(days=2),
+            )
+        )
+        await session.commit()
+
+        bot = RecordingBot()
+        settings = Settings.model_validate(
+            {
+                "bot_token": "123:token",
+                "admin_ids": [1],
+                "bot_public_username": "privatair_bot",
+            }
+        )
+
+        result = await process_expired_subscriptions(session, bot, now=now, settings=settings)
+
+        assert result.warning_3d_count == 1
+        assert [name for name, _ in bot.calls] == ["notify"]
+        assert "VIP 90" in bot.calls[0][1]["text"]
+        assert "?????????? ??" in bot.calls[0][1]["text"]
+        audit_row = _decode_payload((
+            await session.execute(
+                select(AuditLog.payload).where(AuditLog.action == "subscription_warning_3d_sent")
+            )
+        ).scalar_one())
+        assert audit_row["campaign_variant"] == "renewal_3d"
+        assert audit_row["offer_mode"] == "renewal"
+        assert audit_row["offer_strategy"] == "renewal_limited"
+        assert audit_row["recommended_reason_code"] == "limited_renew"
+        assert audit_row["limited_primary"] is True
+        assert audit_row["bundle_count"] == 0
+        assert audit_row["campaign_rule_key"] == "renewal_wave"
+        assert audit_row["campaign_family"] == "renewal"
+        refreshed = await session.get(Subscription, subscription.id)
+        assert refreshed is not None and refreshed.warning_3d_sent_at == now
     finally:
         await _close_session(session, engine)
 
@@ -178,8 +266,15 @@ async def test_process_expired_subscriptions_sends_1d_warning_once() -> None:
             expires_at=now + timedelta(hours=20),
         )
         bot = RecordingBot()
+        settings = Settings.model_validate(
+            {
+                "bot_token": "123:token",
+                "admin_ids": [1],
+                "bot_public_username": "privatair_bot",
+            }
+        )
 
-        first = await process_expired_subscriptions(session, bot, now=now)
+        first = await process_expired_subscriptions(session, bot, now=now, settings=settings)
         second = await process_expired_subscriptions(
             session,
             bot,
@@ -193,7 +288,18 @@ async def test_process_expired_subscriptions_sends_1d_warning_once() -> None:
         assert refreshed is not None
         assert refreshed.warning_1d_sent_at == now
         assert [name for name, _ in bot.calls] == ["notify"]
-        assert "1 день" in bot.calls[0][1]["text"]
+        assert "VIP 42" in bot.calls[0][1]["text"]
+        assert "start=buy_1" in bot.calls[0][1]["text"]
+        audit_row = _decode_payload((
+            await session.execute(
+                select(AuditLog.payload).where(AuditLog.action == "subscription_warning_1d_sent")
+            )
+        ).scalar_one())
+        assert audit_row["campaign_variant"] == "renewal_1d"
+        assert audit_row["offer_mode"] == "renewal"
+        assert audit_row["recommended_reason_code"] == "renewal"
+        assert audit_row["campaign_rule_key"] == "renewal_wave"
+        assert audit_row["campaign_family"] == "renewal"
     finally:
         await _close_session(session, engine)
 
@@ -208,12 +314,20 @@ async def test_process_expired_subscriptions_sends_expired_notice_once_and_delay
             expires_at=now - timedelta(minutes=5),
         )
         bot = RecordingBot()
+        settings = Settings.model_validate(
+            {
+                "bot_token": "123:token",
+                "admin_ids": [1],
+                "bot_public_username": "privatair_bot",
+            }
+        )
 
         first = await process_expired_subscriptions(
             session,
             bot,
             now=now,
             grace_period_hours=6,
+            settings=settings,
         )
         second = await process_expired_subscriptions(
             session,
@@ -234,7 +348,20 @@ async def test_process_expired_subscriptions_sends_expired_notice_once_and_delay
         assert refreshed.expired_notice_sent_at == now
         assert refreshed.grace_revoke_after == now + timedelta(hours=6)
         assert [name for name, _ in bot.calls] == ["notify"]
-        assert "через 6 ч." in bot.calls[0][1]["text"]
+        assert "VIP 42" in bot.calls[0][1]["text"]
+        assert "start=buy_1" in bot.calls[0][1]["text"]
+        audit_row = _decode_payload((
+            await session.execute(
+                select(AuditLog.payload).where(
+                    AuditLog.action == "subscription_expired_notice_sent"
+                )
+            )
+        ).scalar_one())
+        assert audit_row["campaign_variant"] == "grace_recovery"
+        assert audit_row["offer_mode"] == "expired_grace"
+        assert audit_row["recommended_reason_code"] == "return_primary"
+        assert audit_row["campaign_rule_key"] == "grace_recovery_wave"
+        assert audit_row["campaign_family"] == "grace_recovery"
     finally:
         await _close_session(session, engine)
 
@@ -251,12 +378,20 @@ async def test_after_grace_revoke_happens() -> None:
             grace_revoke_after=now,
         )
         bot = AbsentUserBot()
+        settings = Settings.model_validate(
+            {
+                "bot_token": "123:token",
+                "admin_ids": [1],
+                "bot_public_username": "privatair_bot",
+            }
+        )
 
         result = await process_expired_subscriptions(
             session,
             bot,
             now=now,
             grace_period_hours=6,
+            settings=settings,
         )
 
         refreshed = await session.get(Subscription, subscription.id)
@@ -265,6 +400,20 @@ async def test_after_grace_revoke_happens() -> None:
         assert refreshed is not None
         assert refreshed.status == "expired"
         assert refreshed.revoked_at == now
+        assert any(
+            name == "notify" and "start=buy_1" in payload["text"]
+            for name, payload in bot.calls
+        )
+        audit_row = _decode_payload((
+            await session.execute(
+                select(AuditLog.payload).where(AuditLog.action == "subscription_expired")
+            )
+        ).scalar_one())
+        assert audit_row["campaign_variant"] == "final_win_back"
+        assert audit_row["offer_mode"] == "expired_final"
+        assert audit_row["recommended_reason_code"] == "return_primary"
+        assert audit_row["campaign_rule_key"] == "final_reactivation_wave"
+        assert audit_row["campaign_family"] == "final_reactivation"
     finally:
         await _close_session(session, engine)
 

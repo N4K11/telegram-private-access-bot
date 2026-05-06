@@ -80,6 +80,10 @@ class Tariff(TimestampMixin, Base):
     badge: Mapped[str | None] = mapped_column(String(64), nullable=True)
     offer_copy: Mapped[str | None] = mapped_column(String(160), nullable=True)
     offer_group: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    offer_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     is_trial: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_lifetime: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -254,7 +258,9 @@ class SupportTicket(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     category: Mapped[str] = mapped_column(String(32), nullable=False)
+    priority: Mapped[str] = mapped_column(String(16), default="normal", nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="open", nullable=False, index=True)
+    close_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     last_user_message_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

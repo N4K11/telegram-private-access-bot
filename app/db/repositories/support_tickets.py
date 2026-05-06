@@ -18,11 +18,13 @@ class SupportTicketRepository:
         *,
         user_id: int,
         category: str,
+        priority: str,
         created_at: datetime,
     ) -> SupportTicket:
         ticket = SupportTicket(
             user_id=user_id,
             category=category,
+            priority=priority,
             status="open",
             last_user_message_at=created_at,
             created_at=created_at,
@@ -172,9 +174,11 @@ class SupportTicketRepository:
         status: str,
         closed_at: datetime | None,
         closed_by_user_id: int | None,
+        close_reason: str | None,
     ) -> SupportTicket:
         ticket.status = status
         ticket.closed_at = closed_at
         ticket.closed_by_user_id = closed_by_user_id
+        ticket.close_reason = close_reason
         await self._session.flush()
         return ticket

@@ -284,16 +284,18 @@ def user_profile_keyboard(
             text=f"{EMOJI_BUY} {TXT_EXTEND_ACCESS}",
             callback_data=buy_callback,
         )
+        builder.button(text=USER_BUTTON_TARIFFS_TEXT, callback_data="menu:user:tariffs")
+        builder.button(text=USER_BUTTON_HISTORY_TEXT, callback_data="menu:user:payment-history")
+        builder.button(text=USER_BUTTON_REFERRALS_TEXT, callback_data="menu:user:referrals")
+        builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")
+        builder.adjust(2, 2, 2)
+    else:
+        builder.button(text=USER_BUTTON_BUY_TEXT, callback_data=buy_callback)
+        builder.button(text=USER_BUTTON_TARIFFS_TEXT, callback_data="menu:user:tariffs")
         builder.button(text=USER_BUTTON_HISTORY_TEXT, callback_data="menu:user:payment-history")
         builder.button(text=USER_BUTTON_REFERRALS_TEXT, callback_data="menu:user:referrals")
         builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")
         builder.adjust(2, 2, 1)
-    else:
-        builder.button(text=USER_BUTTON_BUY_TEXT, callback_data=buy_callback)
-        builder.button(text=USER_BUTTON_HISTORY_TEXT, callback_data="menu:user:payment-history")
-        builder.button(text=USER_BUTTON_REFERRALS_TEXT, callback_data="menu:user:referrals")
-        builder.button(text=USER_HOME_TEXT, callback_data="menu:user:home")
-        builder.adjust(2, 1, 1)
     return builder.as_markup()
 
 

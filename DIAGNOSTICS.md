@@ -5,7 +5,7 @@
 ## Observability 2.0
 
 - Runtime stores the last 20 critical errors in memory with sanitized messages.
-- Worker status is tracked for `subscription_expirer`, `broadcast_sender`, `backup_worker`, `crypto_reconciler`, `channel_guard` and `admin_reports`.
+- Worker status is tracked for `subscription_expirer`, `broadcast_sender`, `backup_worker`, `crypto_reconciler`, `channel_guard`, `admin_reports` and `retention_automation`.
 - Structured logs redact token-like values, invite links and secret assignments.
 - `CRITICAL_ERROR_WEBHOOK_URL` is optional and disabled by default.
 
@@ -37,7 +37,7 @@ Guardrails now enforced in runtime:
 - `/admin_promo_view CODE` - show the promo card with scope, validity and abuse rules.
 - `/admin_promo_list [QUERY]` - search promo codes by code or campaign.
 - `/admin_promo_stats CODE` - show promo statistics.
-- `/admin_referrals` - referral analytics with top referrers and suspicious cases.
+- `/admin_referrals` - referral analytics with top referrers, suspicious cases and referral revenue context.
 - `/admin_support` - support inbox with open/closed ticket views and reply actions.
 - `/promo CODE` - apply a user promo code.
 - `/my_referrals` - user referral dashboard with link, counts and pending reward days.
@@ -146,6 +146,32 @@ If reports do not arrive:
 - verify `TIMEZONE` is set correctly;
 - inspect audit events `admin_report_sent_daily` and `admin_report_sent_weekly`;
 - verify the process was alive around `09:00` local time.
+
+## Retention automation
+
+Lifecycle retention runs in the background scheduler and covers:
+
+- `first_payment_follow_up` - first successful payment in the last 24h;
+- `never_joined_after_payment` - payment is active but the user still has not joined;
+- `expired_recently` - paid access expired recently and can be won back;
+- `inactive_paid` - previously paid user stayed inactive long enough for a reactivation touch;
+- `lost_after_trial` - trial user expired and should get the trial-specific upgrade message.
+
+Guardrails:
+
+- every segment is deduplicated through `audit_logs`;
+- blocked/admin users are skipped;
+- trial-loss messaging is exclusive and must not degrade into the generic recent-expiry flow in the same window.
+
+If retention messages stop arriving:
+
+- check `/admin_observability` and worker status `retention_automation`;
+- inspect recent audit actions `retention_*_sent`;
+- inspect audit payload fields `campaign_rule_key`, `campaign_family`, `campaign_variant`, `offer_strategy` and `primary_offer_source` to see which lifecycle wave selected the offer mix;
+- use Mini App admin `CRM lifecycle -> ROI` to compare `sent -> paid -> invite -> second product revenue` by managed rule before changing lifecycle copy;
+- use `Promo / Referral` in admin analytics or Mini App summary to compare promo discount pressure against referred-user revenue before tuning acquisition campaigns;
+- use `Acquisition ROI` in admin analytics or Mini App summary to compare first-touch sources by `acquired -> paid -> repeat -> lifetime revenue`, then check lifecycle 30d revenue, second-product attach and top rule/wave before reworking onboarding or deep-link traffic;
+- verify `BOT_PUBLIC_USERNAME`/deep links if CTA links look wrong.
 
 ## Runtime health dashboard
 
@@ -355,8 +381,10 @@ Endpoints:
 - `GET MINI_APP_PATH/api/admin/dashboard` - Mini App admin dashboard with overview cards and capability-aware sections.
 - `GET MINI_APP_PATH/api/admin/users?filter=...&query=...&page=...` - admin-only filterable user directory payload.
 - `GET MINI_APP_PATH/api/admin/payments?provider=...&query=...&page=...` - admin-only filterable payments payload with redacted fields only.
-- `GET MINI_APP_PATH/api/admin/support?status=...&queue=...&query=...&page=...` - admin-only support inbox payload with open/closed filters, queue triage (`all`, `awaiting_admin`, `awaiting_user`, `stale`), wait-state counters and ticket previews.
-- `GET MINI_APP_PATH/api/admin/support/{ticket_id}` - admin-only ticket thread with profile/subscription summary and recent payments for fast support triage.
+- `GET MINI_APP_PATH/api/admin/support?status=...&queue=...&query=...&page=...` - admin-only support inbox payload with open/closed filters, queue triage (`all`, `awaiting_admin`, `awaiting_user`, `stale`), wait-state counters, primary action-lane labels, escalation-lane labels, read-only support insights, SLA hotspots, canned-reply outcomes and ticket previews.
+- `GET MINI_APP_PATH/api/admin/support/{ticket_id}` - admin-only ticket thread with pinned operator context, escalation hints, profile/subscription summary, recent payments, suggested canned replies, close-reason analytics and operator-safe support metadata for fast triage.
+- `GET MINI_APP_PATH/api/admin/support/insights?view=hotspots|sla_actions|pack_outcomes|close_trends|action_lanes|escalation_lanes|escalation_actions|priority_focus|escalation_watchlist|escalation_trends|operator_action_trends&limit=N` - admin-only support insights console payload for SLA hotspots, canned-reply outcomes, close-reason trend slices, managed action lanes, managed escalation lanes, escalation-action mix, SLA action plans, priority handling, escalation watchlist, escalation trends and operator action trends.
+- `GET MINI_APP_PATH/api/admin/lifecycle?view=rules|roi|sources|source_campaigns|source_roi|source_opportunities|source_actions|source_highlights|source_watchlist|highlights|waves|families|variants&limit=N` - admin-only CRM lifecycle dataset for managed waves, ROI, highlights and attribution cuts.
 - `POST MINI_APP_PATH/api/admin/actions/channel-check` - admin-only live channel check that also writes audit `webapp_admin_channel_check`.
 
 If the cabinet does not open correctly:
@@ -366,7 +394,8 @@ If the cabinet does not open correctly:
 - verify Telegram opens the page from a WebApp button and not from a stale browser tab;
 - if APIs return `401`, regenerate fresh `initData` by reopening the Mini App from Telegram;
 - if APIs return `403`, verify the requested target user and admin role.
-- if Mini App admin panels are empty, verify the role has the required permissions (`admin_panel`, `users_view`, `payments`, `support`, `diagnostics`).
+- if Mini App admin panels are empty, verify the role has the required permissions (`admin_panel`, `users_view`, `payments`, `support`, `diagnostics`, `analytics`).
+- if `CRM lifecycle -> ROI` is empty, verify there are lifecycle audit events with `campaign_rule_key` and at least one attributed paid conversion in the selected window.
 - if the Mini App support inbox opens but thread details fail, verify the role still has `support` permission and the ticket id exists.
 - use `bash scripts/smoke_webhook_runtime.sh` after webhook deploys; it auto-loads `.env` from the project root, and with `BOT_TOKEN` plus `ADMIN_IDS` it also exercises authorized Mini App auth plus admin users/payments/support endpoints.
 - if user buy/tariffs screens show a product picker unexpectedly, verify more than one active channel currently has at least one active tariff.

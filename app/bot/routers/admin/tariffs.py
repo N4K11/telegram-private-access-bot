@@ -22,7 +22,7 @@ from app.db.models import Channel, Tariff
 from app.db.repositories.channels import ChannelRepository
 from app.db.repositories.tariffs import TariffRepository
 from app.services.admin_roles import PERMISSION_TARIFFS
-from app.services.product_service import build_offer_details, pick_default_tariff
+from app.services.product_service import build_offer_details
 from app.services.tariffs import (
     TariffValidationError,
     effective_crypto_asset,
@@ -31,8 +31,10 @@ from app.services.tariffs import (
     parse_positive_int,
     tariff_badge_label,
     tariff_duration_label,
+    tariff_offer_expires_label,
     validate_optional_badge,
     validate_optional_offer_copy,
+    validate_optional_offer_expires_at,
     validate_optional_offer_group,
     validate_tariff_name,
     validate_tariff_payload,
@@ -145,6 +147,11 @@ def _render_user_preview(tariff: Tariff) -> str:
         if getattr(tariff, "offer_group", None)
         else ""
     )
+    offer_expires_line = (
+        f"? ???????? ??: {escape(tariff_offer_expires_label(tariff, timezone="UTC") or "UTC")}\n"
+        if getattr(tariff, "offer_expires_at", None)
+        else ""
+    )
     crypto_price = effective_crypto_price(tariff)
     crypto_asset = effective_crypto_asset(tariff, ["USDT"]) or "—"
     crypto_line = ""
@@ -169,6 +176,7 @@ def _render_user_preview(tariff: Tariff) -> str:
         f"📉 Цена в день: {offer_details.price_per_day_label}\n"
         f"📣 Канал: {escape(tariff.channel.title)}\n"
         f"{offer_group_line}"
+        f"{offer_expires_line}"
         f"{offer_copy_line}"
         f"{description_line}"
         f"{compare_line}"
@@ -863,6 +871,35 @@ async def start_tariff_offer_copy_edit(
     )
 
 
+@router.callback_query(F.data.startswith("menu:admin:tariffs:offer-expiry:"))
+async def start_tariff_offer_expiry_edit(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+) -> None:
+    tariff_id = _callback_entity_id(callback.data)
+    if tariff_id is None:
+        await callback.answer()
+        return
+    tariff = await TariffRepository(session).get_by_id(tariff_id)
+    if tariff is None:
+        await callback.answer("????? ?? ??????.")
+        return
+    await state.clear()
+    await state.set_state(AdminTariffForm.waiting_for_new_offer_expires_at)
+    await state.update_data(tariff_action="offer_expiry", tariff_id=tariff.id)
+    current_value = escape(tariff_offer_expires_label(tariff, timezone="UTC") or "?")
+    await edit_or_answer(
+        callback,
+        text=(
+            f"????????? ????? ?????? ?????? #{tariff.id}" + "\n\n"
+            f"??????? ????????: {current_value}" + "\n\n"
+            "????????? ???? ? ??????? YYYY-MM-DD HH:MM (UTC) ??? ?-?, ????? ?????? ???????????."
+        ),
+        reply_markup=admin_form_keyboard(back_callback=f"menu:admin:tariffs:view:{tariff.id}"),
+    )
+
+
 @router.callback_query(F.data.startswith("menu:admin:tariffs:offer-group:"))
 async def start_tariff_offer_group_edit(
     callback: CallbackQuery,
@@ -961,4 +998,18 @@ async def receive_new_tariff_offer_group(
         session=session,
         field_name="offer_group",
         parser=lambda raw: validate_optional_offer_group(_clearable_optional_text(raw)),
+    )
+
+@router.message(AdminTariffForm.waiting_for_new_offer_expires_at)
+async def receive_new_tariff_offer_expires_at(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+) -> None:
+    await _update_tariff_field_from_message(
+        message=message,
+        state=state,
+        session=session,
+        field_name="offer_expires_at",
+        parser=lambda raw: validate_optional_offer_expires_at(_clearable_optional_text(raw)),
     )

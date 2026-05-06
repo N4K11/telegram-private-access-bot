@@ -36,7 +36,9 @@ def upgrade() -> None:
         )
 
     op.execute(
-        "UPDATE users SET onboarding_completed_at = COALESCE(onboarding_completed_at, created_at, CURRENT_TIMESTAMP)"
+        "UPDATE users "
+        "SET onboarding_completed_at = "
+        "COALESCE(onboarding_completed_at, created_at, CURRENT_TIMESTAMP)"
     )
 
 

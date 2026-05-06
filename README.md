@@ -9,6 +9,7 @@ Production-oriented Telegram bot for selling access to private channels with Tel
 - Content / FAQ CMS for FAQ, channel rules, post-payment guide, crypto guide and offer pages backed by managed text templates.
 - Smart channel guard that checks active channels in the background and alerts admins once when bot rights are lost.
 - Daily/weekly automatic admin reports with new users, payments, revenue, active subscriptions and anomalies.
+- Retention automation for first-payment follow-up, pending-join reminders, recent-expiry win-back, inactive paid users and lost-after-trial recovery.
 - Minimalist runtime banners with safe text-only fallback.
 - Channel and tariff management from the admin panel.
 - `/admin_channel_check` for live channel diagnostics and bot rights verification.
@@ -20,7 +21,7 @@ Production-oriented Telegram bot for selling access to private channels with Tel
 - Admin finance dashboard with Stars/Crypto overview and CSV exports.
 - Personal invite links for active subscriptions.
 - Automatic subscription expiration, warnings and channel access revocation.
-- Admin analytics, user directory, direct messaging and manual subscription actions.
+- Admin analytics, product funnel, acquisition ROI with lifecycle source quality, lifecycle ROI, pricing intelligence, promo/referral ROI, user directory, direct messaging and manual subscription actions.
 - Role-based admin permissions with `owner`, `admin`, `support` and `analyst` scopes plus owner-only `/admin_roles`.
 - `/admin_observability`
 - In-bot support tickets with categories, user thread view and admin inbox with reply/close/reopen.
@@ -102,7 +103,7 @@ When `USE_WEBHOOK=true`, the runtime:
 - binds the Telegram webhook endpoint at `WEBHOOK_PATH`;
 - validates `X-Telegram-Bot-Api-Secret-Token`;
 - registers `PUBLIC_WEBHOOK_URL + WEBHOOK_PATH` via `setWebhook`;
-- serves the Mini App page at `MINI_APP_PATH` with strict Telegram `initData` auth plus profile, multi-product catalog, payment, promo, support and admin dashboard widgets;
+- serves the Mini App page at `MINI_APP_PATH` with strict Telegram `initData` auth plus profile, multi-product catalog, payment, promo, support, recommendation surfaces and admin dashboard widgets;
 - keeps background workers running;
 - exposes `GET /healthz` and `GET /readyz`.
 
@@ -142,7 +143,10 @@ When `USE_WEBHOOK=true`, the runtime:
 - `GET MINI_APP_PATH/api/admin/users?filter=...&query=...&page=...`
 - `GET MINI_APP_PATH/api/admin/payments?provider=...&query=...&page=...`
 - `GET MINI_APP_PATH/api/admin/support?status=...&queue=...&query=...&page=...`
+- `GET MINI_APP_PATH/api/admin/support/insights?view=hotspots|sla_actions|pack_outcomes|close_trends|action_lanes|escalation_lanes|escalation_actions|priority_focus|escalation_watchlist|escalation_trends|operator_action_trends&limit=N`
 - `GET MINI_APP_PATH/api/admin/support/{ticket_id}`
+  Returns ticket thread, pinned operator context, escalation hints, action-lane metadata, escalation-lane metadata, profile/payment context, suggested canned replies and operator-safe support metadata. The inbox payload also includes read-only support insights: queue priorities, SLA hotspots, SLA action plans, canned-reply pack outcomes, close-reason trends, managed action lanes, managed escalation lanes, escalation-action mix, priority handling, escalation watchlist, escalation trends and operator action trends.
+- `GET MINI_APP_PATH/api/admin/lifecycle?view=rules|roi|sources|source_campaigns|source_roi|source_opportunities|source_actions|source_highlights|source_watchlist|highlights|waves|families|variants&limit=N`
 - `POST MINI_APP_PATH/api/admin/actions/channel-check`
 
 ## Project layout

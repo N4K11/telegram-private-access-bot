@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+from app.bot.keyboards.user import (
+    USER_BACK_TEXT,
+    USER_BUTTON_BUY_TEXT,
+    USER_BUTTON_LINK_TEXT,
+    USER_HOME_TEXT,
+)
 from app.bot.routers.user.content import content_callback, faq_command
+from app.services.content_service import all_content_entries, get_content_entry
 
 
 class DummyUser:
-    def __init__(self, user_id: int = 100, first_name: str = 'Anna') -> None:
+    def __init__(self, user_id: int = 100, first_name: str = "Anna") -> None:
         self.id = user_id
         self.first_name = first_name
 
@@ -50,6 +57,17 @@ def _flatten_button_texts(markup) -> list[str]:
     return [button.text for row in markup.inline_keyboard for button in row]
 
 
+def _expected_detail_buttons(current_slug: str) -> list[str]:
+    buttons = [USER_BUTTON_BUY_TEXT, USER_BUTTON_LINK_TEXT]
+    buttons.extend(
+        entry.button_text
+        for entry in all_content_entries()
+        if entry.slug != current_slug
+    )
+    buttons.extend([USER_BACK_TEXT, USER_HOME_TEXT])
+    return buttons
+
+
 async def test_faq_command_renders_content_banner() -> None:
     message = DummyMessage()
 
@@ -57,33 +75,18 @@ async def test_faq_command_renders_content_banner() -> None:
 
     assert message.photo_calls
     _, caption, markup = message.photo_calls[0]
-    assert 'FAQ' in caption
-    assert _flatten_button_texts(markup) == [
-        '📜 Правила канала',
-        '✅ После оплаты',
-        '🪙 Crypto Pay',
-        '↩️ Возвраты',
-        '📘 Оферта',
-        '⬅️ Назад',
-        '🏠 Главное меню',
-    ]
+    assert "FAQ" in caption
+    assert _flatten_button_texts(markup) == _expected_detail_buttons("faq")
 
 
 async def test_content_callback_edits_existing_banner_message() -> None:
-    callback = DummyCallback('menu:user:content:rules')
+    callback = DummyCallback("menu:user:content:rules")
 
     await content_callback(callback)
 
     assert callback.message.media_calls
     media, markup = callback.message.media_calls[0]
-    assert 'Правила канала' in media.caption
-    assert _flatten_button_texts(markup) == [
-        '❔ FAQ',
-        '✅ После оплаты',
-        '🪙 Crypto Pay',
-        '↩️ Возвраты',
-        '📘 Оферта',
-        '⬅️ Назад',
-        '🏠 Главное меню',
-    ]
+    assert get_content_entry("rules") is not None
+    assert get_content_entry("rules").title in media.caption
+    assert _flatten_button_texts(markup) == _expected_detail_buttons("rules")
     assert callback.answer_count == 1

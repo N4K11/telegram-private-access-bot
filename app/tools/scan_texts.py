@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import sys
+
 from app.tools.text_repair import REPO_ROOT, scan_default_template_issues, scan_repository
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="backslashreplace")
     template_issues = scan_default_template_issues()
     file_issues = scan_repository()
 

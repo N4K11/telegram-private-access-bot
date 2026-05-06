@@ -167,6 +167,10 @@ def admin_tariff_detail_keyboard(
             callback_data=f"menu:admin:tariffs:offer-group:{tariff_id}",
         )
         builder.button(
+            text="? ?????????? ?? ????",
+            callback_data=f"menu:admin:tariffs:offer-expiry:{tariff_id}",
+        )
+        builder.button(
             text="🔥 Featured: ВКЛ" if is_featured else "🔥 Featured: ВЫКЛ",
             callback_data=f"menu:admin:tariffs:featured:{tariff_id}",
         )

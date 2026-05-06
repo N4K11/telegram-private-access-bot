@@ -291,6 +291,13 @@ async def test_analytics_dashboard_renders_snapshot(session: AsyncSession) -> No
 
     text, markup = callback.message.edit_calls[0]
     assert ANALYTICS_TEXT in text
+    assert "Renewal / Win-back" in text
+    assert "Retention / CRM" in text
+    assert "Pricing / Offers" in text
+    assert "Average payment amount" in text
+    assert "Repeat purchase rate" in text
+    assert "Offer clicked" in text
+    assert "Pending referral bonus days" in text
     assert "7" in text
     assert "1" in text
     assert _flatten_button_texts(markup) == [

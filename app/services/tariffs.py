@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Channel, Subscription, Tariff
 from app.db.repositories.subscriptions import SubscriptionRepository
-from app.utils.datetime import ensure_aware_utc, utcnow
+from app.utils.datetime import ensure_aware_utc, format_datetime, utcnow
 
 LIFETIME_EXPIRES_AT = datetime(9999, 12, 31, 23, 59, tzinfo=UTC)
 DEFAULT_TARIFF_SORT_ORDER = 100
@@ -30,6 +30,7 @@ class TariffDraft:
     badge: str | None = None
     offer_copy: str | None = None
     offer_group: str | None = None
+    offer_expires_at: datetime | None = None
     is_trial: bool = False
     is_lifetime: bool = False
     is_featured: bool = False
@@ -100,6 +101,43 @@ def validate_optional_offer_group(raw_value: str) -> str | None:
     return value
 
 
+def validate_optional_offer_expires_at(raw_value: str) -> datetime | None:
+    value = raw_value.strip()
+    if not value:
+        return None
+    normalized = value.replace("T", " ").replace(" UTC", "").strip()
+    formats = ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d")
+    for fmt in formats:
+        try:
+            parsed = datetime.strptime(normalized, fmt)
+            if fmt == "%Y-%m-%d":
+                parsed = parsed.replace(hour=23, minute=59, second=0)
+            return ensure_aware_utc(parsed.replace(tzinfo=UTC))
+        except ValueError:
+            continue
+    raise TariffValidationError(
+        "Поле даты оффера должно быть в формате YYYY-MM-DD HH:MM (UTC)."
+    )
+
+
+def is_limited_offer_active(tariff: Tariff, *, now: datetime | None = None) -> bool:
+    offer_expires_at = getattr(tariff, "offer_expires_at", None)
+    if offer_expires_at is None:
+        return False
+    return ensure_aware_utc(offer_expires_at) > ensure_aware_utc(now or utcnow())
+
+
+def tariff_offer_expires_label(
+    tariff: Tariff,
+    *,
+    timezone: str = "UTC",
+) -> str | None:
+    offer_expires_at = getattr(tariff, "offer_expires_at", None)
+    if offer_expires_at is None:
+        return None
+    return format_datetime(ensure_aware_utc(offer_expires_at), timezone)
+
+
 def normalize_crypto_asset(raw_value: str | None) -> str | None:
     if raw_value is None:
         return None
@@ -159,6 +197,7 @@ def validate_tariff_payload(
         badge=validate_optional_badge(badge or ""),
         offer_copy=None,
         offer_group=None,
+        offer_expires_at=None,
         is_trial=is_trial,
         is_lifetime=is_lifetime,
         is_featured=False,
@@ -245,3 +284,4 @@ async def ensure_tariff_purchase_allowed(
             "У вас уже есть пожизненный доступ к этому каналу."
         )
     return tariff
+

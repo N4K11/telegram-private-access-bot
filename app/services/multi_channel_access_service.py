@@ -12,8 +12,8 @@ from app.db.repositories.subscriptions import SubscriptionRepository
 from app.utils.datetime import ensure_aware_utc, utcnow
 from app.utils.encoding import safe_ui_text
 
-TXT_PRODUCT = "\u041f\u0440\u043e\u0434\u0443\u043a\u0442"
-TXT_TARIFF = "\u0422\u0430\u0440\u0438\u0444"
+TXT_PRODUCT = "Продукт"
+TXT_TARIFF = "Тариф"
 
 
 @dataclass(slots=True)
@@ -23,6 +23,8 @@ class ProductAccessEntry:
     latest_expires_at: datetime
     subscription_count: int
     tariff_names: tuple[str, ...]
+    tariff_ids: tuple[int, ...]
+    primary_tariff_id: int | None
     subscription_ids: tuple[int, ...]
 
 
@@ -48,8 +50,16 @@ def summarize_product_access(
 
     result: list[ProductAccessEntry] = []
     for channel_id, channel_subscriptions in grouped.items():
-        first = channel_subscriptions[0]
-        channel = getattr(first, "channel", None)
+        latest_first = sorted(
+            channel_subscriptions,
+            key=lambda item: (
+                ensure_aware_utc(item.expires_at),
+                int(getattr(item, "id", 0) or 0),
+            ),
+            reverse=True,
+        )
+        primary = latest_first[0]
+        channel = getattr(primary, "channel", None)
         channel_title = safe_ui_text(
             getattr(channel, "title", None),
             f"{TXT_PRODUCT} #{channel_id}",
@@ -65,6 +75,9 @@ def summarize_product_access(
             )
             for subscription in channel_subscriptions
         )
+        tariff_ids = tuple(
+            dict.fromkeys(int(subscription.tariff_id) for subscription in channel_subscriptions)
+        )
         result.append(
             ProductAccessEntry(
                 channel_id=channel_id,
@@ -72,6 +85,8 @@ def summarize_product_access(
                 latest_expires_at=latest_expires_at,
                 subscription_count=len(channel_subscriptions),
                 tariff_names=tariff_names,
+                tariff_ids=tariff_ids,
+                primary_tariff_id=int(primary.tariff_id),
                 subscription_ids=tuple(subscription.id for subscription in channel_subscriptions),
             )
         )

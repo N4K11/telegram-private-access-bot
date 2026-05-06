@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -24,6 +24,8 @@ from app.db.models import AuditLog, SupportMessage, SupportTicket, User
 from app.db.session import create_async_engine, create_session_factory
 from app.services.support import (
     SUPPORT_CATEGORY_PAYMENT,
+    SUPPORT_CLOSE_REASON_RESOLVED,
+    SUPPORT_PRIORITY_HIGH,
     close_support_ticket,
     create_support_ticket,
 )
@@ -181,6 +183,7 @@ async def test_user_ticket_creation_flow_notifies_admin(
 
     assert len(tickets) == 1
     assert tickets[0].category == SUPPORT_CATEGORY_PAYMENT
+    assert tickets[0].priority == SUPPORT_PRIORITY_HIGH
     assert message.answer_calls
     assert "Обращение создано" in message.answer_calls[-1][0]
     assert bot.sent_messages and bot.sent_messages[0][0] == 755815181
@@ -258,11 +261,14 @@ async def test_admin_can_close_and_reopen_ticket(
         first_name="Admin",
         username="admin",
     )
+    closed = await session.get(SupportTicket, thread.ticket.id)
+    assert closed_status == "closed"
+    assert closed is not None and closed.close_reason == SUPPORT_CLOSE_REASON_RESOLVED
+
     await admin_support_reopen(reopen_callback, session, settings)
     reopened = await session.get(SupportTicket, thread.ticket.id)
-
-    assert closed_status == "closed"
     assert reopened is not None and reopened.status == "open"
+    assert reopened.close_reason is None
 
 
 async def test_other_user_cannot_view_foreign_ticket(

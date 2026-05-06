@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+﻿# ruff: noqa: E501
 from __future__ import annotations
 
 import logging
@@ -41,25 +41,25 @@ class TextTemplateSeed:
 DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
     "start": TextTemplateSeed(
         key="start",
-        title="Главное меню пользователя",
+        title="Р“Р»Р°РІРЅРѕРµ РјРµРЅСЋ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ",
         body=(
             "👋 Привет, {first_name}!\n\n"
-            "Это бот для управления доступом в приватный канал.\n\n"
+            "Р­С‚Рѕ Р±РѕС‚ РґР»СЏ СѓРїСЂР°РІР»РµРЅРёСЏ РґРѕСЃС‚СѓРїРѕРј РІ РїСЂРёРІР°С‚РЅС‹Р№ РєР°РЅР°Р».\n\n"
             "{subscription_status_block}\n\n"
             "Выбери действие ниже 👇"
         ),
     ),
     "user_subscription_inactive": TextTemplateSeed(
         key="user_subscription_inactive",
-        title="Блок статуса без подписки",
+        title="Р‘Р»РѕРє СЃС‚Р°С‚СѓСЃР° Р±РµР· РїРѕРґРїРёСЃРєРё",
         body=(
             "🔒 Подписка: не активна\n\n"
-            "Оформи доступ и получи персональную ссылку для входа."
+            "РћС„РѕСЂРјРё РґРѕСЃС‚СѓРї Рё РїРѕР»СѓС‡Рё РїРµСЂСЃРѕРЅР°Р»СЊРЅСѓСЋ СЃСЃС‹Р»РєСѓ РґР»СЏ РІС…РѕРґР°."
         ),
     ),
     "user_subscription_active": TextTemplateSeed(
         key="user_subscription_active",
-        title="Блок статуса активной подписки",
+        title="Р‘Р»РѕРє СЃС‚Р°С‚СѓСЃР° Р°РєС‚РёРІРЅРѕР№ РїРѕРґРїРёСЃРєРё",
         body=(
             "✅ Подписка активна до: {expires_at}\n\n"
             "Ты можешь повторно получить ссылку для входа, если потерял её."
@@ -70,7 +70,7 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
         title="Активные подписки",
         body=(
             "🔗 Активные подписки\n\n"
-            "Выбери канал, для которого нужна персональная ссылка доступа."
+            "Р’С‹Р±РµСЂРё РєР°РЅР°Р», РґР»СЏ РєРѕС‚РѕСЂРѕРіРѕ РЅСѓР¶РЅР° РїРµСЂСЃРѕРЅР°Р»СЊРЅР°СЏ СЃСЃС‹Р»РєР° РґРѕСЃС‚СѓРїР°."
         ),
     ),
     "user_tariffs": TextTemplateSeed(
@@ -78,23 +78,23 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
         title="Покупка доступа",
         body=(
             "💎 Купить доступ\n\n"
-            "Выбери подходящий тариф для оплаты и мгновенного получения доступа."
+            "Р’С‹Р±РµСЂРё РїРѕРґС…РѕРґСЏС‰РёР№ С‚Р°СЂРёС„ РґР»СЏ РѕРїР»Р°С‚С‹ Рё РјРіРЅРѕРІРµРЅРЅРѕРіРѕ РїРѕР»СѓС‡РµРЅРёСЏ РґРѕСЃС‚СѓРїР°."
         ),
     ),
     "product_buy_picker": TextTemplateSeed(
         key="product_buy_picker",
-        title="Выбор продукта для покупки",
+        title="Р’С‹Р±РѕСЂ РїСЂРѕРґСѓРєС‚Р° РґР»СЏ РїРѕРєСѓРїРєРё",
         body=(
             "💎 Купить доступ\n\n"
-            "Выбери продукт, для которого хочешь оформить доступ.\n\n{products_block}"
+            "Р’С‹Р±РµСЂРё РїСЂРѕРґСѓРєС‚, РґР»СЏ РєРѕС‚РѕСЂРѕРіРѕ С…РѕС‡РµС€СЊ РѕС„РѕСЂРјРёС‚СЊ РґРѕСЃС‚СѓРї.\n\n{products_block}"
         ),
     ),
     "product_tariffs_picker": TextTemplateSeed(
         key="product_tariffs_picker",
-        title="Выбор продукта для просмотра тарифов",
+        title="Р’С‹Р±РѕСЂ РїСЂРѕРґСѓРєС‚Р° РґР»СЏ РїСЂРѕСЃРјРѕС‚СЂР° С‚Р°СЂРёС„РѕРІ",
         body=(
             "📦 Продукты\n\n"
-            "Выбери продукт и посмотри доступные тарифы.\n\n{products_block}"
+            "Р’С‹Р±РµСЂРё РїСЂРѕРґСѓРєС‚ Рё РїРѕСЃРјРѕС‚СЂРё РґРѕСЃС‚СѓРїРЅС‹Рµ С‚Р°СЂРёС„С‹.\n\n{products_block}"
         ),
     ),
     "profile": TextTemplateSeed(
@@ -105,9 +105,9 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
             "Telegram ID: {telegram_id}\n"
             "Username: {username}\n"
             "Подписка: {subscription_status}\n"
-            "Доступ до: {expires_at}\n"
+            "Р”РѕСЃС‚СѓРї РґРѕ: {expires_at}\n"
             "Покупок: {purchase_count}\n"
-            "Оплачено Stars: {total_paid}\n\n"
+            "РћРїР»Р°С‡РµРЅРѕ Stars: {total_paid}\n\n"
             "Активные каналы:\n{active_channels_block}"
         ),
     ),
@@ -131,26 +131,26 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
         body=(
             "💎 {tariff_name}\n\n"
             "⏳ Срок: {duration_days} дней\n"
-            "⭐ Цена: {price_stars} Stars\n"
+            "в­ђ Р¦РµРЅР°: {price_stars} Stars\n"
             "📣 Канал: {channel_name}{crypto_block}"
         ),
     ),
     "payment_success": TextTemplateSeed(
         key="payment_success",
-        title="Успешная оплата",
+        title="РЈСЃРїРµС€РЅР°СЏ РѕРїР»Р°С‚Р°",
         body=(
-            "✅ Оплата прошла успешно.\n\n"
+            "вњ… РћРїР»Р°С‚Р° РїСЂРѕС€Р»Р° СѓСЃРїРµС€РЅРѕ.\n\n"
             "{action}\n"
             "Тариф: {tariff_name}\n"
             "Канал: {channel_name}\n"
-            "Доступ активен до: {expires_at}{invite_block}"
+            "Р”РѕСЃС‚СѓРї Р°РєС‚РёРІРµРЅ РґРѕ: {expires_at}{invite_block}"
         ),
     ),
     "payment_failed": TextTemplateSeed(
         key="payment_failed",
-        title="Ошибка обработки оплаты",
+        title="РћС€РёР±РєР° РѕР±СЂР°Р±РѕС‚РєРё РѕРїР»Р°С‚С‹",
         body=(
-            "⚠️ Оплата получена, но не удалось завершить обработку: {reason}\n\n"
+            "вљ пёЏ РћРїР»Р°С‚Р° РїРѕР»СѓС‡РµРЅР°, РЅРѕ РЅРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ РѕР±СЂР°Р±РѕС‚РєСѓ: {reason}\n\n"
             "Напиши в /paysupport, если доступ не активировался автоматически."
         ),
     ),
@@ -158,7 +158,7 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
         key="subscription_warning_3d",
         title="Напоминание за 3 дня до окончания подписки",
         body=(
-            "⏳ До окончания доступа к каналу «{channel_name}» осталось около 3 дней.\n\n"
+            "вЏі Р”Рѕ РѕРєРѕРЅС‡Р°РЅРёСЏ РґРѕСЃС‚СѓРїР° Рє РєР°РЅР°Р»Сѓ В«{channel_name}В» РѕСЃС‚Р°Р»РѕСЃСЊ РѕРєРѕР»Рѕ 3 РґРЅРµР№.\n\n"
             "Подписка действует до: {expires_at}.\n"
             "Продли доступ заранее, чтобы не потерять вход."
         ),
@@ -167,7 +167,7 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
         key="subscription_warning_1d",
         title="Напоминание за 1 день до окончания подписки",
         body=(
-            "⚠️ До окончания доступа к каналу «{channel_name}» остался примерно 1 день.\n\n"
+            "вљ пёЏ Р”Рѕ РѕРєРѕРЅС‡Р°РЅРёСЏ РґРѕСЃС‚СѓРїР° Рє РєР°РЅР°Р»Сѓ В«{channel_name}В» РѕСЃС‚Р°Р»СЃСЏ РїСЂРёРјРµСЂРЅРѕ 1 РґРµРЅСЊ.\n\n"
             "Подписка действует до: {expires_at}.\n"
             "Продли доступ заранее, чтобы бот не отозвал доступ."
         ),
@@ -177,14 +177,14 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
         title="Подписка истекла, действует grace period",
         body=(
             "⌛ Подписка на канал «{channel_name}» уже истекла.\n\n"
-            "Истекла: {expired_at}.\n"
-            "Если не продлить доступ, бот отзовёт его через {grace_period_hours} ч."
+            "РСЃС‚РµРєР»Р°: {expired_at}.\n"
+            "Р•СЃР»Рё РЅРµ РїСЂРѕРґР»РёС‚СЊ РґРѕСЃС‚СѓРї, Р±РѕС‚ РѕС‚Р·РѕРІС‘С‚ РµРіРѕ С‡РµСЂРµР· {grace_period_hours} С‡."
         ),
     ),    "subscription_expired": TextTemplateSeed(
         key="subscription_expired",
         title="Подписка истекла",
         body=(
-            "⛔ Доступ к каналу «{channel_name}» завершён.\n\n"
+            "в›” Р”РѕСЃС‚СѓРї Рє РєР°РЅР°Р»Сѓ В«{channel_name}В» Р·Р°РІРµСЂС€С‘РЅ.\n\n"
             "Подписка истекла. Оформи новый тариф, чтобы вернуться в канал."
         ),
     ),
@@ -202,10 +202,10 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
         title="Помощь",
         body=(
             "❓ Помощь\n\n"
-            "1. Выбери тариф и оплати его Stars.\n"
+            "1. Р’С‹Р±РµСЂРё С‚Р°СЂРёС„ Рё РѕРїР»Р°С‚Рё РµРіРѕ Stars.\n"
             "2. После оплаты бот выдаст персональную ссылку.\n"
             "3. Если ссылка потерялась, открой раздел «🔗 Получить ссылку».\n"
-            "4. Если что-то пошло не так, используй /paysupport."
+            "4. Р•СЃР»Рё С‡С‚Рѕ-С‚Рѕ РїРѕС€Р»Рѕ РЅРµ С‚Р°Рє, РёСЃРїРѕР»СЊР·СѓР№ /paysupport."
         ),
     ),
     "user_support": TextTemplateSeed(
@@ -215,7 +215,7 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
             "❓ Помощь\n\n"
             "После оплаты доступ активируется автоматически.\n"
             "Если ссылка потерялась, открой «🔗 Получить ссылку».\n"
-            "Если платёж прошёл, а доступа нет, используй /paysupport."
+            "Р•СЃР»Рё РїР»Р°С‚С‘Р¶ РїСЂРѕС€С‘Р», Р° РґРѕСЃС‚СѓРїР° РЅРµС‚, РёСЃРїРѕР»СЊР·СѓР№ /paysupport."
         ),
     ),
     "payment_support": TextTemplateSeed(
@@ -262,11 +262,11 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
     key="faq",
     title="FAQ",
     body=(
-        "❔ FAQ\n\n"
-        "1. Доступ активируется автоматически сразу после успешной оплаты.\n"
+        "вќ” FAQ\n\n"
+        "1. Р”РѕСЃС‚СѓРї Р°РєС‚РёРІРёСЂСѓРµС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё СЃСЂР°Р·Сѓ РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕР№ РѕРїР»Р°С‚С‹.\n"
         "2. Если ссылка потерялась, открой раздел «🔗 Получить ссылку».\n"
         "3. Продление тарифа продлевает доступ без повторной регистрации.\n"
-        "4. Если платёж прошёл, а доступа нет, используй /paysupport или открой тикет в помощи."
+        "4. Р•СЃР»Рё РїР»Р°С‚С‘Р¶ РїСЂРѕС€С‘Р», Р° РґРѕСЃС‚СѓРїР° РЅРµС‚, РёСЃРїРѕР»СЊР·СѓР№ /paysupport РёР»Рё РѕС‚РєСЂРѕР№ С‚РёРєРµС‚ РІ РїРѕРјРѕС‰Рё."
     ),
 ),
 "channel_rules": TextTemplateSeed(
@@ -282,41 +282,41 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
 ),
 "after_payment_guide": TextTemplateSeed(
     key="after_payment_guide",
-    title="Инструкция после оплаты",
+    title="?????????? ????? ??????",
     body=(
         "✅ После оплаты\n\n"
-        "1. Дождись сообщения бота об успешной активации.\n"
+        "1. ??????? ????????? ???? ?? ???????? ?????????.\n"
         "2. Сразу после оплаты бот обычно отправляет персональную ссылку.\n"
         "3. Если ссылка не пришла, открой «🔗 Получить ссылку» в главном меню.\n"
-        "4. Если доступ не активировался, используй /paysupport или открой тикет в помощи."
+        "4. ???? ?????? ?? ?????????????, ????????? /paysupport ??? ?????? ????? ? ??????."
     ),
 ),
 "crypto_payment_guide": TextTemplateSeed(
     key="crypto_payment_guide",
-    title="Инструкция по Crypto Pay",
+    title="?????????? ?? Crypto Pay",
     body=(
         "🪙 Crypto Pay\n\n"
-        "1. Открой счёт Crypto Pay из карточки тарифа.\n"
-        "2. Оплати счёт полностью до его истечения.\n"
-        "3. Доступ выдаётся только после статуса paid.\n"
-        "4. Если счёт истёк или не подтвердился, создай новый и не отправляй оплату по старому invoice."
+        "1. ?????? ???? Crypto Pay ?? ???????? ??????.\n"
+        "2. ?????? ???? ????????? ?? ??? ?????????.\n"
+        "3. ?????? ???????? ?????? ????? ??????? paid.\n"
+        "4. ???? ???? ????? ??? ?? ????????????, ?????? ????? ? ?? ????????? ?????? ?? ??????? invoice."
     ),
 ),
 "offer": TextTemplateSeed(
     key="offer",
-    title="Оферта",
+    title="??????",
     body=(
-        "📘 Оферта\n\n"
-        "Оплачивая тариф, пользователь соглашается с условиями доступа, сроком действия подписки, правилами канала и политикой обработки обращений.\n\n"
-        "Актуальные срок, цена и канал всегда показываются в карточке тарифа до оплаты."
+        "?? ??????\n\n"
+        "????????? ?????, ???????????? ??????????? ? ????????? ???????, ?????? ???????? ????????, ????????? ?????? ? ????????? ????????? ?????????.\n\n"
+        "?????? ???? ???????, ???? ? ????? ?????? ???????????? ? ???????? ?????? ?? ??????."
     ),
 ),
     "user_invite_picker": TextTemplateSeed(
         key="user_invite_picker",
-        title="Выбор ссылки доступа",
+        title="Р’С‹Р±РѕСЂ СЃСЃС‹Р»РєРё РґРѕСЃС‚СѓРїР°",
         body=(
             "🔗 Получить ссылку\n\n"
-            "Выбери канал, для которого нужна ссылка доступа:\n\n{subscriptions_block}"
+            "Р’С‹Р±РµСЂРё РєР°РЅР°Р», РґР»СЏ РєРѕС‚РѕСЂРѕРіРѕ РЅСѓР¶РЅР° СЃСЃС‹Р»РєР° РґРѕСЃС‚СѓРїР°:\n\n{subscriptions_block}"
         ),
     ),
     "user_invite_missing": TextTemplateSeed(
@@ -324,21 +324,21 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
         title="Нет активной подписки для ссылки",
         body=(
             "🔗 Получить ссылку\n\n"
-            "У тебя нет активной подписки.\n\n"
-            "Выбери тариф и оформи доступ, чтобы получить персональную ссылку."
+            "РЈ С‚РµР±СЏ РЅРµС‚ Р°РєС‚РёРІРЅРѕР№ РїРѕРґРїРёСЃРєРё.\n\n"
+            "Р’С‹Р±РµСЂРё С‚Р°СЂРёС„ Рё РѕС„РѕСЂРјРё РґРѕСЃС‚СѓРї, С‡С‚РѕР±С‹ РїРѕР»СѓС‡РёС‚СЊ РїРµСЂСЃРѕРЅР°Р»СЊРЅСѓСЋ СЃСЃС‹Р»РєСѓ."
         ),
     ),
     "admin_dashboard": TextTemplateSeed(
         key="admin_dashboard",
-        title="Главное меню администратора",
+        title="Р“Р»Р°РІРЅРѕРµ РјРµРЅСЋ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°",
         body=(
             "🛠 Админ-панель\n\n"
-            "Управляй тарифами, каналами, текстами, пользователями и резервными копиями из одного меню."
+            "РЈРїСЂР°РІР»СЏР№ С‚Р°СЂРёС„Р°РјРё, РєР°РЅР°Р»Р°РјРё, С‚РµРєСЃС‚Р°РјРё, РїРѕР»СЊР·РѕРІР°С‚РµР»СЏРјРё Рё СЂРµР·РµСЂРІРЅС‹РјРё РєРѕРїРёСЏРјРё РёР· РѕРґРЅРѕРіРѕ РјРµРЅСЋ."
         ),
     ),
     "admin_section": TextTemplateSeed(
         key="admin_section",
-        title="Раздел админки",
+        title="Р Р°Р·РґРµР» Р°РґРјРёРЅРєРё",
         body="🛠 Раздел администратора: {section}",
     ),
     "admin_menu_analytics": TextTemplateSeed(key="admin_menu_analytics", title="Кнопка аналитики", body="📊 Аналитика", is_system=True),
@@ -353,21 +353,66 @@ DEFAULT_TEXT_TEMPLATES: dict[str, TextTemplateSeed] = {
     "admin_menu_diagnostics": TextTemplateSeed(key="admin_menu_diagnostics", title="Кнопка диагностики", body="🧪 Диагностика", is_system=True),
     "admin_button_back": TextTemplateSeed(key="admin_button_back", title="Кнопка назад", body="⬅️ Назад", is_system=True),
     "admin_button_home": TextTemplateSeed(key="admin_button_home", title="Кнопка домой", body="🏠 Админ-панель", is_system=True),
-}
+    "retention_first_payment_follow_up": TextTemplateSeed(
+        key="retention_first_payment_follow_up",
+        title="Retention: first payment follow-up",
+        body=(
+            "\u2705 \u041e\u043f\u043b\u0430\u0442\u0430 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0430.\n\n"
+            "\u0422\u044b \u0443\u0436\u0435 \u043e\u0444\u043e\u0440\u043c\u0438\u043b \u0434\u043e\u0441\u0442\u0443\u043f \u043a \u043a\u0430\u043d\u0430\u043b\u0443 \u00ab{channel_name}\u00bb.\n"
+            "\u0415\u0441\u043b\u0438 \u043f\u0435\u0440\u0441\u043e\u043d\u0430\u043b\u044c\u043d\u0430\u044f \u0441\u0441\u044b\u043b\u043a\u0430 \u043f\u043e\u0442\u0435\u0440\u044f\u043b\u0430\u0441\u044c, \u043e\u0442\u043a\u0440\u043e\u0439: {link_link}\n"
+            "\u0415\u0441\u043b\u0438 \u043d\u0443\u0436\u043d\u0430 \u043f\u043e\u043c\u043e\u0449\u044c, \u043d\u0430\u043f\u0438\u0448\u0438 \u0432 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0443: {support_link}"
+        ),
+    ),
+    "retention_pending_join": TextTemplateSeed(
+        key="retention_pending_join",
+        title="Retention: pending join reminder",
+        body=(
+            "\u26a0\ufe0f \u0422\u044b \u0443\u0436\u0435 \u043e\u043f\u043b\u0430\u0442\u0438\u043b \u0434\u043e\u0441\u0442\u0443\u043f \u043a \u00ab{channel_name}\u00bb, \u043d\u043e \u0432\u0445\u043e\u0434 \u0435\u0449\u0451 \u043d\u0435 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d.\n\n"
+            "\u0415\u0441\u043b\u0438 \u0441\u0441\u044b\u043b\u043a\u0430 \u043f\u043e\u0442\u0435\u0440\u044f\u043b\u0430\u0441\u044c, \u043e\u0442\u043a\u0440\u043e\u0439 \u043d\u043e\u0432\u0443\u044e: {link_link}\n"
+            "\u0414\u043e\u0441\u0442\u0443\u043f \u0441\u0435\u0439\u0447\u0430\u0441 \u0430\u043a\u0442\u0438\u0432\u0435\u043d \u0434\u043e: {expires_at}"
+        ),
+    ),
+    "retention_win_back": TextTemplateSeed(
+        key="retention_win_back",
+        title="Retention: recent expiration win-back",
+        body=(
+            "\u21a9\ufe0f \u0414\u043e\u0441\u0442\u0443\u043f \u043a \u00ab{channel_name}\u00bb \u0443\u0436\u0435 \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u043b\u0441\u044f.\n\n"
+            "\u0421 \u043c\u043e\u043c\u0435\u043d\u0442\u0430 \u043e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u044f \u043f\u0440\u043e\u0448\u043b\u043e: {days_since_expired} \u0434\u043d.\n"
+            "\u0412\u0435\u0440\u043d\u0443\u0442\u044c\u0441\u044f \u043c\u043e\u0436\u043d\u043e \u0437\u0430 \u043f\u0430\u0440\u0443 \u043a\u0430\u0441\u0430\u043d\u0438\u0439: {buy_link}"
+        ),
+    ),
+    "retention_inactive_paid": TextTemplateSeed(
+        key="retention_inactive_paid",
+        title="Retention: inactive paid user",
+        body=(
+            "\U0001f4a1 \u0422\u044b \u0443\u0436\u0435 \u0437\u043d\u0430\u0435\u0448\u044c, \u043a\u0430\u043a \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442 \u0434\u043e\u0441\u0442\u0443\u043f \u043a \u00ab{channel_name}\u00bb.\n\n"
+            "\u0415\u0441\u043b\u0438 \u0445\u043e\u0447\u0435\u0448\u044c \u0432\u0435\u0440\u043d\u0443\u0442\u044c\u0441\u044f, \u043e\u0442\u043a\u0440\u043e\u0439 \u0442\u0435\u043a\u0443\u0449\u0438\u0435 \u0442\u0430\u0440\u0438\u0444\u044b: {tariffs_link}\n"
+            "\u0418\u043b\u0438 \u0441\u0440\u0430\u0437\u0443 \u0437\u0430\u043f\u0443\u0441\u0442\u0438 \u043f\u043e\u043a\u0443\u043f\u043a\u0443: {buy_link}"
+        ),
+    ),
+    "retention_lost_after_trial": TextTemplateSeed(
+        key="retention_lost_after_trial",
+        title="Retention: lost after trial",
+        body=(
+            "\U0001f525 \u041f\u0440\u043e\u0431\u043d\u044b\u0439 \u0434\u043e\u0441\u0442\u0443\u043f \u043a \u00ab{channel_name}\u00bb \u0443\u0436\u0435 \u0437\u0430\u043a\u043e\u043d\u0447\u0438\u043b\u0441\u044f.\n\n"
+            "\u0415\u0441\u043b\u0438 \u0445\u043e\u0447\u0435\u0448\u044c \u043f\u043e\u043b\u043d\u0443\u044e \u0432\u0435\u0440\u0441\u0438\u044e \u0431\u0435\u0437 \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u0439, \u043e\u0444\u043e\u0440\u043c\u0438 \u043e\u0441\u043d\u043e\u0432\u043d\u043e\u0439 \u0442\u0430\u0440\u0438\u0444: {buy_link}\n"
+            "\u0418\u043b\u0438 \u0441\u043d\u0430\u0447\u0430\u043b\u0430 \u043f\u043e\u0441\u043c\u043e\u0442\u0440\u0438 \u0432\u0441\u0435 \u0432\u0430\u0440\u0438\u0430\u043d\u0442\u044b: {tariffs_link}"
+        ),
+    ),}
 
 LEGACY_DEFAULT_TEXT_BODIES: dict[str, str] = {
-    "start": "Здравствуйте, {first_name}.\n\nPrivate access bot.",
+    "start": "Р—РґСЂР°РІСЃС‚РІСѓР№С‚Рµ, {first_name}.\n\nPrivate access bot.",
     "user_subscription": "Моя подписка\n\nАктивных подписок сейчас нет.",
     "user_tariffs": "Тарифы\n\nВыберите подходящий тариф.",
-    "profile": "Моя подписка\n\n{subscriptions_block}{payments_block}",
+    "profile": "РњРѕСЏ РїРѕРґРїРёСЃРєР°\n\n{subscriptions_block}{payments_block}",
     "tariffs": "Тарифы\n\n{tariffs_block}",
-    "payment_success": "Оплата прошла успешно.\n\n{action}\nTariff: {tariff_name}\nChannel: {channel_name}\nExpires: {expires_at}{invite_block}",
-    "payment_failed": "Оплата получена, но обработка не завершилась: {reason}\n\nUse /paysupport.",
+    "payment_success": "РћРїР»Р°С‚Р° РїСЂРѕС€Р»Р° СѓСЃРїРµС€РЅРѕ.\n\n{action}\nTariff: {tariff_name}\nChannel: {channel_name}\nExpires: {expires_at}{invite_block}",
+    "payment_failed": "РћРїР»Р°С‚Р° РїРѕР»СѓС‡РµРЅР°, РЅРѕ РѕР±СЂР°Р±РѕС‚РєР° РЅРµ Р·Р°РІРµСЂС€РёР»Р°СЃСЊ: {reason}\n\nUse /paysupport.",
     "support": "Поддержка\n\nUse /paysupport or contact the admin.",
     "user_support": "Поддержка\n\nUse /paysupport or contact the admin.",
     "paysupport": "Поддержка оплаты\n\nSend the payment screenshot and tariff details to the admin.",
     "admin_dashboard": "Панель администратора\n\nManage tariffs, channels, texts and broadcasts.",
-    "admin_section": "Раздел администратора: {section}",
+    "admin_section": "Р Р°Р·РґРµР» Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°: {section}",
 }
 
 

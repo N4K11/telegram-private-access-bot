@@ -11,6 +11,7 @@ from app.config import Settings
 from app.db.repositories.users import UserRepository
 from app.services.admin_roles import (
     PERMISSION_ADMIN_PANEL,
+    PERMISSION_ANALYTICS,
     PERMISSION_DIAGNOSTICS,
     PERMISSION_PAYMENTS,
     PERMISSION_SUPPORT,
@@ -21,7 +22,9 @@ from app.services.admin_roles import (
 from app.services.observability import EVENT_CABINET_AUTH_FAILED
 from app.services.web_admin_dashboard import (
     build_web_admin_dashboard_payload,
+    build_web_admin_lifecycle_payload,
     build_web_admin_payments_payload,
+    build_web_admin_support_insights_payload,
     build_web_admin_support_payload,
     build_web_admin_support_ticket_payload,
     build_web_admin_users_payload,
@@ -54,9 +57,14 @@ def register_webapp_routes(app: web.Application, settings: Settings) -> None:
     app.router.add_get(f"{base_path}/api/users/{{telegram_id}}/profile", mini_app_user_profile)
     app.router.add_get(f"{base_path}/api/admin/summary", mini_app_admin_summary)
     app.router.add_get(f"{base_path}/api/admin/dashboard", mini_app_admin_dashboard)
+    app.router.add_get(f"{base_path}/api/admin/lifecycle", mini_app_admin_lifecycle)
     app.router.add_get(f"{base_path}/api/admin/users", mini_app_admin_users)
     app.router.add_get(f"{base_path}/api/admin/payments", mini_app_admin_payments)
     app.router.add_get(f"{base_path}/api/admin/support", mini_app_admin_support)
+    app.router.add_get(
+        f"{base_path}/api/admin/support/insights",
+        mini_app_admin_support_insights,
+    )
     app.router.add_get(
         f"{base_path}/api/admin/support/{{ticket_id}}",
         mini_app_admin_support_ticket,
@@ -204,6 +212,33 @@ async def mini_app_admin_dashboard(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "data": data})
 
 
+async def mini_app_admin_lifecycle(request: web.Request) -> web.Response:
+    session_factory = _get_session_factory(request)
+    if session_factory is None:
+        return web.json_response({"ok": False, "error": "service_unavailable"}, status=503)
+    settings = request.app[SETTINGS_APP_KEY]
+    init_data = request.headers.get(INIT_DATA_HEADER, "")
+    async with session_factory() as session:
+        auth_result = await _authenticate_session(session, settings=settings, init_data=init_data)
+        if isinstance(auth_result, web.Response):
+            await session.rollback()
+            return auth_result
+        _, user = auth_result
+        denied = _require_permission(user, PERMISSION_ANALYTICS)
+        if denied is not None:
+            await session.commit()
+            return denied
+        data = await build_web_admin_lifecycle_payload(
+            session,
+            settings=settings,
+            viewer_role=user.role,
+            view=request.query.get("view", "rules"),
+            limit=_positive_int(request.query.get("limit"), 12),
+        )
+        await session.commit()
+    return web.json_response({"ok": True, "data": data})
+
+
 async def mini_app_admin_users(request: web.Request) -> web.Response:
     session_factory = _get_session_factory(request)
     if session_factory is None:
@@ -291,6 +326,33 @@ async def mini_app_admin_support(request: web.Request) -> web.Response:
         await session.commit()
     return web.json_response({"ok": True, "data": data})
 
+
+
+async def mini_app_admin_support_insights(request: web.Request) -> web.Response:
+    session_factory = _get_session_factory(request)
+    if session_factory is None:
+        return web.json_response({"ok": False, "error": "service_unavailable"}, status=503)
+    settings = request.app[SETTINGS_APP_KEY]
+    init_data = request.headers.get(INIT_DATA_HEADER, "")
+    async with session_factory() as session:
+        auth_result = await _authenticate_session(session, settings=settings, init_data=init_data)
+        if isinstance(auth_result, web.Response):
+            await session.rollback()
+            return auth_result
+        _, user = auth_result
+        denied = _require_permission(user, PERMISSION_SUPPORT)
+        if denied is not None:
+            await session.commit()
+            return denied
+        data = await build_web_admin_support_insights_payload(
+            session,
+            settings=settings,
+            viewer_role=user.role,
+            view=request.query.get("view", "hotspots"),
+            limit=_positive_int(request.query.get("limit"), 8),
+        )
+        await session.commit()
+    return web.json_response({"ok": True, "data": data})
 
 async def mini_app_admin_support_ticket(request: web.Request) -> web.Response:
     session_factory = _get_session_factory(request)

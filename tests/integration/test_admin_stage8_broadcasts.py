@@ -288,6 +288,7 @@ async def _seed_broadcast_data(session: AsyncSession) -> dict[str, object]:
 
     await session.commit()
     return {
+        "now": now,
         "admin": admin_user,
         "channel": channel,
         "tariff": tariff,
@@ -305,17 +306,35 @@ async def test_select_broadcast_recipients_filters_and_excludes_blocked(
 ) -> None:
     seeded = await _seed_broadcast_data(session)
 
-    all_preview = await select_broadcast_recipients(session, filter_name="all")
-    active_preview = await select_broadcast_recipients(session, filter_name="active")
-    expired_preview = await select_broadcast_recipients(session, filter_name="expired")
-    never_paid_preview = await select_broadcast_recipients(session, filter_name="never_paid")
+    all_preview = await select_broadcast_recipients(
+        session,
+        filter_name="all",
+        now=seeded["now"],
+    )
+    active_preview = await select_broadcast_recipients(
+        session,
+        filter_name="active",
+        now=seeded["now"],
+    )
+    expired_preview = await select_broadcast_recipients(
+        session,
+        filter_name="expired",
+        now=seeded["now"],
+    )
+    never_paid_preview = await select_broadcast_recipients(
+        session,
+        filter_name="never_paid",
+        now=seeded["now"],
+    )
     tariff_preview = await select_broadcast_recipients(
         session,
         filter_name=f"tariff-{seeded['tariff'].id}",
+        now=seeded["now"],
     )
     channel_preview = await select_broadcast_recipients(
         session,
         filter_name=f"channel-{seeded['channel'].id}",
+        now=seeded["now"],
     )
 
     assert seeded["blocked_user"].id not in all_preview.user_ids
@@ -375,11 +394,12 @@ async def test_broadcast_creation_requires_confirmation(session: AsyncSession) -
 
 
 async def test_broadcast_worker_handles_partial_failures(session: AsyncSession) -> None:
-    await _seed_broadcast_data(session)
+    seeded = await _seed_broadcast_data(session)
     campaign = await queue_broadcast_campaign(
         session,
         created_by_user_id=1,
         filter_name="active",
+        now=seeded["now"],
         content="Рассылка для активных",
     )
     await session.commit()

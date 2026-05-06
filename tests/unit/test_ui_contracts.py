@@ -207,13 +207,24 @@ def test_user_profile_keyboard_uses_custom_buy_callback() -> None:
         buy_callback="menu:user:buy:product:12",
     )
 
-    assert _row_payload(inactive_markup)[0][0] == (
+    inactive_rows = _row_payload(inactive_markup)
+    active_rows = _row_payload(active_markup)
+
+    assert inactive_rows[0][0] == (
         f"{DIAMOND} {TXT_BUY_ACCESS}",
         "menu:user:buy:product:12",
     )
-    assert _row_payload(active_markup)[0][1] == (
+    assert inactive_rows[0][1] == (
+        f"{BOX} {TXT_TARIFFS}",
+        "menu:user:tariffs",
+    )
+    assert active_rows[0][1] == (
         f"{DIAMOND} {TXT_EXTEND}",
         "menu:user:buy:product:12",
+    )
+    assert active_rows[1][0] == (
+        f"{BOX} {TXT_TARIFFS}",
+        "menu:user:tariffs",
     )
 
 

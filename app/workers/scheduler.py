@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import logging
@@ -20,6 +20,7 @@ from app.services.channel_guard_service import run_channel_guard_cycle
 from app.services.observability import EVENT_WORKER_CYCLE_FAILED
 from app.services.payments.crypto_pay import reconcile_active_crypto_invoices
 from app.services.report_service import dispatch_scheduled_admin_reports
+from app.services.retention_automation import process_retention_messages
 from app.workers.backup_worker import run_scheduled_backup_cycle
 from app.workers.broadcast_sender import process_broadcast_campaigns
 from app.workers.subscription_expirer import process_expired_subscriptions
@@ -51,6 +52,7 @@ async def run_background_workers(
                     warning_3d_enabled=settings.warning_3d_enabled,
                     warning_1d_enabled=settings.warning_1d_enabled,
                     timezone=settings.timezone,
+                    settings=settings,
                 )
                 details = (
                     f"warn3d={expiration_result.warning_3d_count}, "
@@ -246,6 +248,36 @@ async def run_background_workers(
                 extra={"event_name": EVENT_WORKER_CYCLE_FAILED, "worker_name": "admin_reports"},
             )
 
+        try:
+            async with session_factory() as session:
+                retention_result = await process_retention_messages(session, bot, settings)
+                details = (
+                    f"sent={retention_result.sent_count}, "
+                    f"failed={retention_result.failed_count}, "
+                    f"candidates={sum(retention_result.segment_candidate_counts.values())}"
+                )
+                record_worker_status("retention_automation", "ok", details=details)
+                if retention_result.processed_count:
+                    logger.info(
+                        "Retention cycle: sent=%s failed=%s skipped=%s candidates=%s.",
+                        retention_result.sent_count,
+                        retention_result.failed_count,
+                        retention_result.skipped_count,
+                        sum(retention_result.segment_candidate_counts.values()),
+                    )
+                has_active_work = has_active_work or retention_result.has_work
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            details = f"{exc.__class__.__name__}: {exc}"
+            record_worker_status("retention_automation", "fail", details=details)
+            logger.exception(
+                "Retention automation worker cycle failed",
+                extra={
+                    "event_name": EVENT_WORKER_CYCLE_FAILED,
+                    "worker_name": "retention_automation",
+                },
+            )
         record_maintenance_run(label="background_workers")
         wait_timeout = ACTIVE_WORKER_INTERVAL_SECONDS if has_active_work else interval_seconds
         try:
@@ -281,3 +313,6 @@ async def background_workers(
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+
+
+

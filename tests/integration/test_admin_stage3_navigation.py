@@ -163,6 +163,7 @@ async def test_tariff_detail_renders_actions(
         "🏷 Изменить бейдж",
         "📝 Короткий оффер",
         "📚 Группа офферов",
+        "? ?????????? ?? ????",
         "🔥 Featured: ВЫКЛ",
         "🎯 Default: ВЫКЛ",
         "🧪 Trial: ВЫКЛ",
