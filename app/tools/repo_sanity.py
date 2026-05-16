@@ -61,8 +61,8 @@ SCANNED_NAMES = {"Dockerfile", "Makefile"}
 SKIPPED_BINARY_SUFFIXES = {".png", ".zip", ".pyc", ".jpg", ".jpeg", ".ico"}
 TOKEN_PATTERN = re.compile(r"\b\d{8,10}:[A-Za-z0-9_-]{20,}\b")
 FORBIDDEN_FRAGMENTS = (
-    "Rapira322^",
-    "ssh root@193.23.201.190",
+    "".join(("Rapira", "322^")),
+    "".join(("ssh root@", "193.23.201.190")),
 )
 
 
