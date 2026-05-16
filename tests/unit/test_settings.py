@@ -30,7 +30,7 @@ def test_env_csv_values_are_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_runtime_validation_requires_token_and_admins() -> None:
-    settings = Settings.model_validate({})
+    settings = Settings.model_validate({"bot_token": None, "admin_ids": []})
 
     with pytest.raises(RuntimeConfigurationError):
         settings.require_runtime_ready()
