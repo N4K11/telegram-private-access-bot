@@ -185,6 +185,34 @@ async def test_empty_db_report_works(session: AsyncSession) -> None:
     assert "Crypto: 0" in text
 
 
+async def test_report_includes_read_model_digest_when_settings_provided(
+    session: AsyncSession,
+) -> None:
+    now = datetime(2026, 5, 3, 9, 0, tzinfo=UTC)
+    settings = Settings.model_validate(
+        {"bot_token": "123:token", "admin_ids": [42], "timezone": "UTC"}
+    )
+
+    report = await build_admin_report(
+        session,
+        period=REPORT_PERIOD_DAILY,
+        timezone="UTC",
+        settings=settings,
+        now=now,
+    )
+    text = render_admin_report(report, timezone="UTC")
+
+    assert report.read_model_action_summary is not None
+    assert report.read_model_drift_summary is not None
+    assert report.read_model_watchlist_summary is not None
+    assert "Read-model summary:" in text
+    assert "Read-model watchlist:" in text
+    assert "Top watch item:" in text
+    assert "Read-models:" in text
+    assert "Top read-model action:" in text
+    assert "Read-model drift:" in text
+
+
 async def test_no_duplicate_daily_report(session: AsyncSession) -> None:
     now = datetime(2026, 5, 3, 9, 15, tzinfo=UTC)
     await _seed_report_data(session, now=now)

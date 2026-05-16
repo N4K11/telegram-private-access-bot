@@ -15,6 +15,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.db.models import AuditLog, Payment, Subscription, User
 from app.runtime_state import snapshot_runtime_state
+from app.services.admin_read_model_reporting import (
+    AdminReadModelActionSummary,
+    AdminReadModelDriftSummary,
+    AdminReadModelWatchlistSummary,
+    build_admin_read_model_action_digest,
+    build_admin_read_model_action_summary,
+    build_admin_read_model_drift_digest,
+    build_admin_read_model_drift_summary,
+    build_admin_read_model_operator_digest,
+    build_admin_read_model_watchlist_digest,
+    build_admin_read_model_watchlist_summary,
+)
 from app.services.audit import write_audit_log
 from app.services.payments.crypto_pay import CRYPTO_PAY_PROVIDER, MINOR_UNITS_MULTIPLIER
 from app.services.payments.stars import STARS_PROVIDER
@@ -67,6 +79,9 @@ class AdminReportSnapshot:
     active_subscriptions: int
     expired_subscriptions: int
     anomalies: int
+    read_model_watchlist_summary: AdminReadModelWatchlistSummary | None = None
+    read_model_action_summary: AdminReadModelActionSummary | None = None
+    read_model_drift_summary: AdminReadModelDriftSummary | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +100,8 @@ async def build_admin_report(
     *,
     period: str,
     timezone: str,
+    settings: Settings | None = None,
+    viewer_role: str = "owner",
     now: datetime | None = None,
 ) -> AdminReportSnapshot:
     current_time = ensure_aware_utc(now or utcnow())
@@ -166,6 +183,34 @@ async def build_admin_report(
         1 for item in runtime.recent_critical_errors if item.occurred_at >= range_start
     )
 
+    read_model_watchlist_summary = None
+    read_model_action_summary = None
+    read_model_drift_summary = None
+    if settings is not None:
+        read_model_watchlist_summary = await build_admin_read_model_watchlist_summary(
+            session,
+            settings=settings,
+            viewer_role=viewer_role,
+            now=current_time,
+            limit=3,
+            source="snapshot",
+        )
+        read_model_action_summary = await build_admin_read_model_action_summary(
+            session,
+            settings=settings,
+            viewer_role=viewer_role,
+            now=current_time,
+            limit=5,
+            source="live",
+        )
+        read_model_drift_summary = await build_admin_read_model_drift_summary(
+            session,
+            settings=settings,
+            viewer_role=viewer_role,
+            now=current_time,
+            limit=5,
+        )
+
     return AdminReportSnapshot(
         period=period,
         period_key=period_key,
@@ -180,6 +225,9 @@ async def build_admin_report(
         active_subscriptions=active_subscriptions,
         expired_subscriptions=expired_subscriptions,
         anomalies=anomalies,
+        read_model_watchlist_summary=read_model_watchlist_summary,
+        read_model_action_summary=read_model_action_summary,
+        read_model_drift_summary=read_model_drift_summary,
     )
 
 
@@ -192,6 +240,68 @@ def render_admin_report(snapshot: AdminReportSnapshot, *, timezone: str) -> str:
     lines.append(f"{TEXT_ACTIVE_SUBSCRIPTIONS}{snapshot.active_subscriptions}")
     lines.append(f"{TEXT_EXPIRED_SUBSCRIPTIONS}{snapshot.expired_subscriptions}")
     lines.append(f"{TEXT_ANOMALIES}{snapshot.anomalies}")
+    if snapshot.read_model_watchlist_summary is not None:
+        watchlist_digest = build_admin_read_model_watchlist_digest(
+            snapshot.read_model_watchlist_summary,
+            max_items=0,
+        )
+        lines.append(f"Read-model watchlist: {watchlist_digest.summary_line}")
+        if watchlist_digest.top_label:
+            lines.append(f"Top watch item: {watchlist_digest.top_label}")
+        if watchlist_digest.top_detail:
+            lines.append(f"Watch note: {watchlist_digest.top_detail}")
+        if watchlist_digest.item_lines:
+            lines.append("Read-model watchlist digest:")
+            for item_line in watchlist_digest.item_lines:
+                lines.append(f"- {item_line}")
+    operator_digest = build_admin_read_model_operator_digest(
+        watchlist_summary=snapshot.read_model_watchlist_summary,
+        action_summary=snapshot.read_model_action_summary,
+        drift_summary=snapshot.read_model_drift_summary,
+    )
+    if operator_digest is not None:
+        lines.append(f"Read-model summary: {operator_digest.summary_line}")
+    if snapshot.read_model_action_summary is not None:
+        action_digest = build_admin_read_model_action_digest(
+            snapshot.read_model_action_summary,
+            max_items=0,
+        )
+        lines.append(
+            f"Read-models: {action_digest.summary_line}"
+        )
+        if action_digest.top_label:
+            lines.append(
+                "Top read-model action: "
+                f"{action_digest.top_label}"
+            )
+        if action_digest.top_detail:
+            lines.append(f"Action note: {action_digest.top_detail}")
+        if action_digest.item_lines:
+            lines.append("Read-model digest:")
+            for item_line in action_digest.item_lines:
+                lines.append(f"- {item_line}")
+    if snapshot.read_model_drift_summary is not None:
+        drift_digest = build_admin_read_model_drift_digest(
+            snapshot.read_model_drift_summary,
+            max_items=0,
+        )
+        lines.append(
+            f"Read-model drift: {drift_digest.extended_summary_line}"
+        )
+        if drift_digest.top_label:
+            lines.append(
+                "Top drift regression: "
+                f"{drift_digest.top_label}"
+            )
+        if snapshot.read_model_drift_summary.top_budget_regression_label:
+            lines.append(
+                "Top budget regression: "
+                f"{snapshot.read_model_drift_summary.top_budget_regression_label}"
+            )
+        if drift_digest.item_lines:
+            lines.append("Read-model drift digest:")
+            for item_line in drift_digest.item_lines:
+                lines.append(f"- {item_line}")
     lines.extend(
         [
             "",
@@ -260,6 +370,7 @@ async def _maybe_dispatch_period(
         session,
         period=period,
         timezone=settings.timezone,
+        settings=settings,
         now=now,
     )
     action = (

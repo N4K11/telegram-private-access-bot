@@ -1,14 +1,14 @@
 ﻿from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.filters.admin import AdminFilter
-from app.bot.routers.admin.analytics import analytics_dashboard
+from app.bot.routers.admin.analytics import analytics_dashboard, analytics_dashboard_refresh
 from app.bot.routers.admin.users import (
     confirm_block_toggle,
     confirm_manual_grant,
@@ -24,6 +24,8 @@ from app.config import Settings
 from app.db.base import Base
 from app.db.models import AuditLog, Channel, Payment, Subscription, Tariff, User
 from app.db.session import create_async_engine, create_session_factory
+from app.services.admin_read_model_refresh import refresh_admin_read_models
+from app.utils.datetime import utcnow
 
 
 class DummyUser:
@@ -133,7 +135,7 @@ async def session() -> AsyncIterator[AsyncSession]:
 
 
 async def _seed_stage7_data(session: AsyncSession) -> dict[str, object]:
-    now = datetime(2026, 4, 28, 12, 0, tzinfo=UTC)
+    now = utcnow()
 
     channel = Channel(
         telegram_chat_id=-1001234567890,
@@ -298,6 +300,7 @@ async def test_analytics_dashboard_renders_snapshot(session: AsyncSession) -> No
     assert "Repeat purchase rate" in text
     assert "Offer clicked" in text
     assert "Pending referral bonus days" in text
+    assert "Data source: live" in text
     assert "7" in text
     assert "1" in text
     assert _flatten_button_texts(markup) == [
@@ -305,6 +308,28 @@ async def test_analytics_dashboard_renders_snapshot(session: AsyncSession) -> No
         "🔄 Обновить",
         "Главное меню",
     ]
+
+
+async def test_analytics_dashboard_prefers_snapshot_when_available(session: AsyncSession) -> None:
+    await _seed_stage7_data(session)
+    settings = Settings.model_validate({"bot_token": "123:token", "admin_ids": [755815181]})
+    await refresh_admin_read_models(session, settings=settings, now=utcnow(), force=True)
+    callback = DummyCallback("menu:admin:analytics")
+
+    await analytics_dashboard(callback, session)
+
+    text, _ = callback.message.edit_calls[0]
+    assert "Data source: snapshot" in text
+
+
+async def test_analytics_refresh_callback_forces_live_render(session: AsyncSession) -> None:
+    await _seed_stage7_data(session)
+    callback = DummyCallback("menu:admin:analytics:refresh")
+
+    await analytics_dashboard_refresh(callback, session)
+
+    text, _ = callback.message.edit_calls[0]
+    assert "Data source: live" in text
 
 
 async def test_users_list_supports_filters_and_pagination(session: AsyncSession) -> None:

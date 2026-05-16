@@ -39,6 +39,7 @@ def test_gitignore_contains_required_runtime_artifact_patterns() -> None:
         ".vendor/",
         ".tooling/",
         "*.db",
+        "data/db.json",
         "backups/*",
         "*.log",
         "logs/",
@@ -49,7 +50,7 @@ def test_gitignore_contains_required_runtime_artifact_patterns() -> None:
 
 def test_local_runtime_artifacts_are_not_tracked() -> None:
     tracked = _git("ls-files").splitlines()
-    forbidden_exact = {".env", "dev.db"}
+    forbidden_exact = {".env", "dev.db", "data/db.json"}
     forbidden_prefixes = (
         ".venv/",
         "__pycache__/",

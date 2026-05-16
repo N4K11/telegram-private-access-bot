@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from time import perf_counter
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
@@ -8,6 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.filters.admin import AdminFilter
 from app.bot.keyboards.admin_users import admin_analytics_keyboard
 from app.bot.routers.common import edit_or_answer
+from app.services.admin_analytics_text import (
+    ANALYTICS_TITLE,
+    append_admin_analytics_meta,
+    render_admin_analytics_text,
+)
+from app.services.admin_read_models import (
+    ANALYTICS_FACT_KEY_ADMIN_ANALYTICS_TEXT,
+    load_analytics_fact_payload,
+)
 from app.services.admin_roles import PERMISSION_ANALYTICS
 from app.services.analytics import (
     AnalyticsSnapshot,
@@ -25,12 +36,11 @@ from app.services.analytics import (
     build_analytics_snapshot,
 )
 from app.services.retention_automation import RetentionSegmentSnapshot
+from app.utils.datetime import utcnow
 
 router = Router(name="admin_analytics")
 router.message.filter(AdminFilter(PERMISSION_ANALYTICS))
 router.callback_query.filter(AdminFilter(PERMISSION_ANALYTICS))
-
-ANALYTICS_TITLE = "\u0410\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0430"
 
 
 def _conversion_percent(value: int, total: int) -> str:
@@ -648,6 +658,25 @@ def _render_analytics(snapshot: AnalyticsSnapshot) -> str:
     return "\n".join(lines)
 
 
+def _render_read_model_text(payload: dict[str, object]) -> str:
+    text_body = str(payload.get("text_body") or ANALYTICS_TITLE)
+    source = str(payload.get("source") or "snapshot")
+    try:
+        staleness_seconds = int(payload.get("staleness_seconds") or 0)
+    except (TypeError, ValueError):
+        staleness_seconds = 0
+    try:
+        build_duration_ms = int(payload.get("build_duration_ms") or 0)
+    except (TypeError, ValueError):
+        build_duration_ms = 0
+    return append_admin_analytics_meta(
+        text_body,
+        source=source,
+        staleness_seconds=staleness_seconds,
+        build_duration_ms=build_duration_ms,
+    )
+
+
 @router.callback_query(F.data == "menu:admin:analytics")
 async def analytics_dashboard(
     callback: CallbackQuery,
@@ -657,9 +686,52 @@ async def analytics_dashboard(
     if state is not None:
         await state.clear()
 
-    snapshot = await build_analytics_snapshot(session)
+    current_time = utcnow()
+    payload = await load_analytics_fact_payload(
+        session,
+        fact_key=ANALYTICS_FACT_KEY_ADMIN_ANALYTICS_TEXT,
+        fact_date=current_time.date(),
+        now=current_time,
+    )
+    if payload is not None:
+        text = _render_read_model_text(payload)
+    else:
+        started_at = perf_counter()
+        snapshot = await build_analytics_snapshot(session, now=current_time)
+        build_duration_ms = round((perf_counter() - started_at) * 1000)
+        text = append_admin_analytics_meta(
+            render_admin_analytics_text(snapshot),
+            source="live",
+            staleness_seconds=0,
+            build_duration_ms=build_duration_ms,
+        )
     await edit_or_answer(
         callback,
-        text=_render_analytics(snapshot),
+        text=text,
+        reply_markup=admin_analytics_keyboard(),
+    )
+
+
+@router.callback_query(F.data == "menu:admin:analytics:refresh")
+async def analytics_dashboard_refresh(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext | None = None,
+) -> None:
+    if state is not None:
+        await state.clear()
+
+    current_time = utcnow()
+    started_at = perf_counter()
+    snapshot = await build_analytics_snapshot(session, now=current_time)
+    build_duration_ms = round((perf_counter() - started_at) * 1000)
+    await edit_or_answer(
+        callback,
+        text=append_admin_analytics_meta(
+            render_admin_analytics_text(snapshot),
+            source="live",
+            staleness_seconds=0,
+            build_duration_ms=build_duration_ms,
+        ),
         reply_markup=admin_analytics_keyboard(),
     )

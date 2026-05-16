@@ -21,6 +21,7 @@ build/
 *.egg-info/
 *.db
 *.sqlite3
+data/db.json
 *.log
 logs/
 backups/*

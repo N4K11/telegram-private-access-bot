@@ -4,7 +4,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import PromoCode
+from app.db.models import PromoCode, Tariff
 
 
 class PromoCodeRepository:
@@ -14,7 +14,7 @@ class PromoCodeRepository:
     async def get_by_id(self, promo_code_id: int) -> PromoCode | None:
         result = await self._session.execute(
             select(PromoCode)
-            .options(selectinload(PromoCode.tariff))
+            .options(selectinload(PromoCode.tariff).selectinload(Tariff.channel))
             .where(PromoCode.id == promo_code_id)
         )
         return result.scalar_one_or_none()
@@ -22,7 +22,7 @@ class PromoCodeRepository:
     async def get_by_code(self, code: str) -> PromoCode | None:
         result = await self._session.execute(
             select(PromoCode)
-            .options(selectinload(PromoCode.tariff))
+            .options(selectinload(PromoCode.tariff).selectinload(Tariff.channel))
             .where(PromoCode.code == code)
         )
         return result.scalar_one_or_none()
@@ -33,7 +33,9 @@ class PromoCodeRepository:
         search: str | None = None,
         limit: int = 20,
     ) -> list[PromoCode]:
-        statement = select(PromoCode).options(selectinload(PromoCode.tariff))
+        statement = select(PromoCode).options(
+            selectinload(PromoCode.tariff).selectinload(Tariff.channel)
+        )
         if search:
             normalized = f"%{search.upper()}%"
             statement = statement.where(

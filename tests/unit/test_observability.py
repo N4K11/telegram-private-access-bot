@@ -4,10 +4,15 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.db.base import Base
+from app.db.session import create_async_engine, create_session_factory
 from app.logging_config import (
     CriticalErrorWebhookHandler,
     JsonLogFormatter,
@@ -21,9 +26,15 @@ from app.runtime_state import (
     reset_runtime_state,
     snapshot_runtime_state,
 )
+from app.services.admin_read_model_reporting import (
+    AdminReadModelDriftItemSummary,
+    AdminReadModelDriftSummary,
+    AdminReadModelOperatorDigest,
+)
 from app.services.observability import (
     EVENT_TELEGRAM_API_ERROR,
     EVENT_WORKER_CYCLE_FAILED,
+    AdminObservabilityReport,
     build_admin_observability_report,
     render_admin_observability_report,
 )
@@ -34,6 +45,20 @@ def runtime_state_fixture() -> AsyncIterator[None]:
     reset_runtime_state()
     yield
     reset_runtime_state()
+
+
+@pytest_asyncio.fixture
+async def session(workspace_tmp_path: Path) -> AsyncIterator[AsyncSession]:
+    database_path = workspace_tmp_path / "observability.db"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path.as_posix()}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = create_session_factory(engine)
+    async with session_factory() as db_session:
+        yield db_session
+
+    await engine.dispose()
 
 
 def test_json_log_formatter_redacts_token_like_values() -> None:
@@ -130,7 +155,9 @@ def test_critical_error_webhook_handler_is_disabled_without_url(
     assert called is False
 
 
-def test_admin_observability_report_renders_recent_runtime_state() -> None:
+async def test_admin_observability_report_renders_recent_runtime_state(
+    session: AsyncSession,
+) -> None:
     record_critical_error(
         EVENT_WORKER_CYCLE_FAILED,
         "Backup worker failed",
@@ -161,13 +188,93 @@ def test_admin_observability_report_renders_recent_runtime_state() -> None:
         }
     )
 
-    report = build_admin_observability_report(
+    report = await build_admin_observability_report(
+        session,
+        settings=settings,
         critical_error_webhook_url=settings.critical_error_webhook_url,
     )
     text = render_admin_observability_report(report, timezone=settings.timezone)
 
-    assert "🚨 Наблюдаемость" in text
-    assert "Critical webhook: включён" in text
+    assert report.read_model_actions is not None
+    assert report.read_model_watchlist is not None
+    assert "Critical webhook:" in text
     assert "backup_worker" in text
     assert "Backup worker failed" in text
     assert "TelegramBadRequest: chat not found" in text
+    assert "Read-models:" in text
+    assert "focus:" in text
+    assert "summary:" in text
+    assert "snapshot summary unavailable" in text
+    assert "watchlist:" in text
+    assert "actions:" in text
+    assert "drift:" in text
+
+
+def test_admin_observability_report_renders_drift_leaders() -> None:
+    report = AdminObservabilityReport(
+        recent_errors=(),
+        worker_statuses=(),
+        last_telegram_api_error_at=None,
+        last_telegram_api_error=None,
+        last_backup_result_at=None,
+        last_backup_result_status=None,
+        last_backup_result_details=None,
+        critical_webhook_enabled=False,
+        read_model_summary=None,
+        read_model_focus=None,
+        read_model_operator_digest=AdminReadModelOperatorDigest(
+            summary_line="focus live drift: Pricing / Offers В· drift regressions 2",
+            focus_line="Live drift В· Pricing / Offers В· budget regression",
+            watch_line=None,
+            action_line=None,
+            drift_line="Pricing / Offers В· budget regression В· +3 queries В· +2048 bytes",
+        ),
+        read_model_watchlist=None,
+        read_model_actions=None,
+        read_model_drift=AdminReadModelDriftSummary(
+            source="live",
+            generated_at_label="06.05.2026 12:00",
+            staleness_seconds=0,
+            compared_count=3,
+            missing_snapshot_count=0,
+            regression_count=2,
+            improvement_count=1,
+            budget_regression_count=1,
+            query_regression_count=1,
+            payload_regression_count=2,
+            build_regression_count=1,
+            top_regression_label="Pricing / Offers",
+            top_regression_note="Live drifted above snapshot baseline.",
+            top_budget_regression_label="Support insights",
+            top_query_regression_label="Pricing / Offers",
+            top_payload_regression_label="Support insights",
+            top_build_regression_label="Admin summary",
+            top_items=(
+                AdminReadModelDriftItemSummary(
+                    label="Pricing / Offers",
+                    note="budget regression, +3 queries, +2048 bytes",
+                    query_count_delta=3,
+                    payload_bytes_delta=2048,
+                    build_duration_ms_delta=0,
+                    budget_regressed=True,
+                ),
+                AdminReadModelDriftItemSummary(
+                    label="Support insights",
+                    note="+512 bytes, +12 ms",
+                    query_count_delta=0,
+                    payload_bytes_delta=512,
+                    build_duration_ms_delta=12,
+                    budget_regressed=False,
+                ),
+            ),
+        ),
+    )
+
+    text = render_admin_observability_report(report, timezone="UTC")
+
+    assert "query regression: Pricing / Offers" in text
+    assert "payload regression: Support insights" in text
+    assert "build regression: Admin summary" in text
+    assert "summary:" in text
+    assert "top drift: Pricing / Offers" in text
+    assert "budget regression" in text

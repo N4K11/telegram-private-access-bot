@@ -154,6 +154,7 @@ async def test_admin_health_command_renders_report(session: AsyncSession) -> Non
     text, markup = message.answer_calls[0]
     assert "❤️ Состояние бота" in text
     assert "✅ Бот подключен: @health_bot" in text
+    assert "Read-model snapshots:" in text
     assert "<code>777</code>" in text
     assert "background_workers" in text
     assert _flatten_button_texts(markup) == ["⬅️ Назад", "🏠 Админ-панель"]

@@ -58,6 +58,15 @@ def test_backup_script_does_not_delete_or_restore_current_database() -> None:
     assert "json.load" in text
 
 
+def test_backup_script_allows_safe_deterministic_archive_name() -> None:
+    text = _read_script("backup_db.sh")
+
+    assert "BACKUP_ARCHIVE_NAME" in text
+    assert "BACKUP_ARCHIVE_NAME must be a safe file name" in text
+    assert "BACKUP_ARCHIVE_NAME must end with .tar.gz" in text
+    assert 'ARCHIVE_NAME="${LABEL}-db-backup-${TIMESTAMP}.tar.gz"' in text
+
+
 def test_verify_script_validates_manifest_json() -> None:
     text = _read_script("verify_backup.sh")
 

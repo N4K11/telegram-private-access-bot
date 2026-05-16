@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -144,6 +146,15 @@ class Subscription(TimestampMixin, Base):
 
 class Payment(TimestampMixin, Base):
     __tablename__ = "payments"
+    __table_args__ = (
+        Index(
+            "ix_payments_status_paid_at_user_id_channel_id",
+            "status",
+            "paid_at",
+            "user_id",
+            "channel_id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
@@ -180,6 +191,14 @@ class InviteLink(TimestampMixin, Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index(
+            "ix_audit_logs_action_created_at_target_user_id",
+            "action",
+            "created_at",
+            "target_user_id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -254,6 +273,15 @@ class BackupRecord(Base):
 
 class SupportTicket(TimestampMixin, Base):
     __tablename__ = "support_tickets"
+    __table_args__ = (
+        Index(
+            "ix_support_tickets_status_priority_updated_at_user_id",
+            "status",
+            "priority",
+            "updated_at",
+            "user_id",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
@@ -362,3 +390,64 @@ class PromoRedemption(TimestampMixin, Base):
     promo_code: Mapped[PromoCode] = relationship(back_populates="redemptions")
     payment: Mapped[Payment | None] = relationship()
     tariff: Mapped[Tariff | None] = relationship()
+
+
+class AnalyticsDailyFact(TimestampMixin, Base):
+    __tablename__ = "analytics_daily_facts"
+    __table_args__ = (
+        UniqueConstraint(
+            "fact_date",
+            "fact_key",
+            "scope_key",
+            name="uq_analytics_daily_fact_scope",
+        ),
+        Index(
+            "ix_analytics_daily_facts_fact_key_generated_at",
+            "fact_key",
+            "generated_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fact_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    fact_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    scope_key: Mapped[str] = mapped_column(String(64), default="all", nullable=False)
+    product_channel_id: Mapped[int | None] = mapped_column(
+        ForeignKey("channels.id"),
+        nullable=True,
+        index=True,
+    )
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class LifecycleCampaignFact(TimestampMixin, Base):
+    __tablename__ = "lifecycle_campaign_facts"
+    __table_args__ = (
+        UniqueConstraint("view_key", name="uq_lifecycle_campaign_fact_view_key"),
+        Index(
+            "ix_lifecycle_campaign_facts_generated_at",
+            "generated_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    view_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SupportQueueFact(TimestampMixin, Base):
+    __tablename__ = "support_queue_facts"
+    __table_args__ = (
+        UniqueConstraint("view_key", name="uq_support_queue_fact_view_key"),
+        Index(
+            "ix_support_queue_facts_generated_at",
+            "generated_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    view_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

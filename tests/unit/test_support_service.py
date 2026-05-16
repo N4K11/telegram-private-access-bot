@@ -18,10 +18,14 @@ from app.services.support import (
     SupportTicketError,
     add_admin_ticket_reply,
     build_support_canned_replies,
+    build_support_canned_replies_for_pack,
     build_support_insights,
     close_support_ticket,
     create_support_ticket,
     reopen_support_ticket,
+    support_next_action_label,
+    support_next_action_note,
+    support_next_action_severity,
 )
 
 
@@ -140,6 +144,7 @@ def test_build_support_insights_summarize_queue_and_recent_closures() -> None:
         updated_at=now - timedelta(hours=1),
         last_user_message_at=now - timedelta(hours=1),
     )
+    open_payment.id = 11
     open_technical = SupportTicket(
         user_id=2,
         category=SUPPORT_CATEGORY_TECHNICAL,
@@ -149,6 +154,7 @@ def test_build_support_insights_summarize_queue_and_recent_closures() -> None:
         updated_at=now - timedelta(hours=30),
         last_admin_message_at=now - timedelta(hours=30),
     )
+    open_technical.id = 12
     recent_closed = SupportTicket(
         user_id=3,
         category=SUPPORT_CATEGORY_PAYMENT,
@@ -204,6 +210,26 @@ def test_build_support_insights_summarize_queue_and_recent_closures() -> None:
     assert insights.action_lanes[0].key == "waiting_user_followup"
     assert insights.action_lanes[0].sla_breach_count == 1
     assert any(item.key == "payment_review" for item in insights.action_lanes)
+    assert insights.next_action_queue[0].key == "waiting_user_followup"
+    assert insights.next_action_queue[0].top_escalation_lane == "waiting_user_risk"
+    assert insights.next_action_queue[0].sample_ticket_ids == (12,)
+    assert "follow-up" in insights.next_action_queue[0].note
+    assert any(item.key == "payment_review" for item in insights.next_action_queue)
+    assert insights.action_routes[0].key == "waiting_user_risk:waiting_user_followup"
+    assert insights.action_routes[0].top_kind == "breach"
+    assert insights.action_routes[0].awaiting_user_count == 1
+    assert insights.action_routes[0].sample_ticket_ids == (12,)
+    assert "First move" in insights.action_routes[0].note
+    assert "Риск ожидания пользователя" in insights.action_routes[0].note
+    assert any(item.key == "payment_blocker:payment_review" for item in insights.action_routes)
+    assert insights.triage_queue[0].key == "payment_blocker:payment_review:open:payment"
+    assert insights.triage_queue[0].pack_key == "open:payment"
+    assert insights.triage_queue[0].action_key == "payment_review"
+    assert insights.triage_queue[0].escalation_key == "payment_blocker"
+    assert insights.triage_queue[0].sample_ticket_ids == (11,)
+    assert insights.triage_queue[0].awaiting_admin_count == 1
+    assert "Use" in insights.triage_queue[0].note
+    assert any(item.pack_key == "awaiting_user:technical" for item in insights.triage_queue)
     assert insights.escalation_lanes[0].key == "waiting_user_risk"
     assert insights.escalation_lanes[0].sla_breach_count == 1
     assert any(item.key == "payment_blocker" for item in insights.escalation_lanes)
@@ -239,6 +265,10 @@ def test_build_support_insights_summarize_queue_and_recent_closures() -> None:
     assert insights.sla_actions[0].kind == "breach"
     assert insights.sla_actions[0].action_key == "waiting_user_followup"
     assert insights.sla_actions[0].escalation_key == "waiting_user_risk"
+    assert insights.sla_action_queue[0].key == "waiting_user_followup"
+    assert insights.sla_action_queue[0].top_kind == "breach"
+    assert insights.sla_action_queue[0].top_escalation_lane == "waiting_user_risk"
+    assert insights.sla_action_queue[0].sample_ticket_ids == (12,)
     assert any(item.kind == "stale" for item in insights.sla_actions)
     assert any(item.kind == "stale" for item in insights.sla_hotspots)
 
@@ -264,6 +294,81 @@ def test_build_support_canned_replies_follow_ticket_state() -> None:
     ticket.status = "closed"
     closed_keys = [item.key for item in build_support_canned_replies(ticket)]
     assert closed_keys[0] == "closed_resolution_summary"
+
+
+def test_build_support_canned_replies_for_pack_returns_pack_specific_suggestions() -> None:
+    replies = build_support_canned_replies_for_pack("open:payment", limit=2)
+
+    assert [item.key for item in replies] == [
+        "payment_ack_review",
+        "payment_request_receipt",
+    ]
+    assert replies[0].kind == "ack"
+
+
+def test_support_next_action_prefers_ticket_route_and_escalation() -> None:
+    now = datetime(2026, 5, 2, 12, 0, tzinfo=UTC)
+    ticket = SupportTicket(
+        user_id=1,
+        category=SUPPORT_CATEGORY_PAYMENT,
+        priority=SUPPORT_PRIORITY_HIGH,
+        status="open",
+        created_at=now - timedelta(hours=6),
+        updated_at=now - timedelta(hours=2),
+        last_user_message_at=now - timedelta(hours=2),
+    )
+
+    assert support_next_action_label(ticket, now=now) == "Проверить оплату"
+    assert support_next_action_severity(ticket, now=now) == "warn"
+    note = support_next_action_note(ticket, now=now)
+    assert "Проверь платёж" in note
+    assert "Платёжный блокер" in note
+
+
+def test_build_support_insights_next_action_queue_prefers_higher_priority_escalation_on_tie(
+) -> None:
+    now = datetime(2026, 5, 6, 12, 0, tzinfo=UTC)
+    payment_ticket = SupportTicket(
+        user_id=1,
+        category=SUPPORT_CATEGORY_PAYMENT,
+        priority=SUPPORT_PRIORITY_HIGH,
+        status="open",
+        created_at=now - timedelta(hours=14),
+        updated_at=now - timedelta(hours=13),
+        last_user_message_at=now - timedelta(hours=13),
+    )
+    payment_ticket.id = 21
+    technical_ticket = SupportTicket(
+        user_id=2,
+        category=SUPPORT_CATEGORY_TECHNICAL,
+        priority="urgent",
+        status="open",
+        created_at=now - timedelta(hours=6),
+        updated_at=now - timedelta(hours=5),
+        last_user_message_at=now - timedelta(hours=5),
+    )
+    technical_ticket.id = 22
+
+    insights = build_support_insights(
+        open_tickets=[payment_ticket, technical_ticket],
+        closed_tickets=[],
+        now=now,
+    )
+
+    assert insights.next_action_queue[0].key == "reply_now"
+    assert insights.next_action_queue[0].count == 2
+    assert insights.next_action_queue[0].top_escalation_lane == "payment_blocker"
+    assert insights.next_action_queue[0].sample_ticket_ids == (21, 22)
+    assert insights.action_routes[0].key == "payment_blocker:reply_now"
+    assert insights.action_routes[0].count == 1
+    assert insights.action_routes[0].top_kind == "breach"
+    assert insights.action_routes[0].sample_ticket_ids == (21,)
+    assert insights.sla_action_queue[0].key == "reply_now"
+    assert insights.sla_action_queue[0].sample_ticket_ids == (21, 22)
+    assert insights.triage_queue[0].key == "payment_blocker:reply_now:open:payment"
+    assert insights.triage_queue[0].pack_key == "open:payment"
+    assert insights.triage_queue[0].top_kind == "breach"
+    assert insights.triage_queue[0].sample_ticket_ids == (21,)
 
 
 async def test_support_ticket_daily_rate_limit_after_three_recent_tickets(

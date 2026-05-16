@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from aiogram.types import SuccessfulPayment
@@ -54,7 +54,7 @@ class DummyMessage:
         self.answer_calls: list[tuple[str, object | None]] = []
         self.invoice_calls: list[dict[str, object]] = []
         self.successful_payment: SuccessfulPayment | None = None
-        self.date = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+        self.date = datetime.now(UTC).replace(microsecond=0)
 
     async def answer(self, text: str, reply_markup=None) -> None:
         self.answer_calls.append((text, reply_markup))
@@ -236,7 +236,7 @@ async def test_discount_promo_changes_invoice_amount_and_shows_preview(
         telegram_payment_charge_id="tg-promo-1",
         provider_payment_charge_id="provider-promo-1",
     )
-    paid_message.date = datetime(2026, 5, 1, 12, 30, tzinfo=UTC)
+    paid_message.date = promo_message.date + timedelta(minutes=30)
 
     await successful_payment_handler(paid_message, session, settings, bot)
 
@@ -354,6 +354,7 @@ async def test_promo_command_reports_not_yet_active(
     settings: Settings,
 ) -> None:
     user, tariff = await _seed_tariff(session)
+    message = DummyMessage("/promo FUTURE20", user_id=user.telegram_id)
     session.add(
         PromoCode(
             code="FUTURE20",
@@ -362,13 +363,12 @@ async def test_promo_command_reports_not_yet_active(
             max_uses=3,
             tariff_id=tariff.id,
             is_active=True,
-            valid_from=datetime(2026, 5, 2, 12, 0, tzinfo=UTC),
+            valid_from=message.date + timedelta(days=1),
         )
     )
     await session.commit()
 
     bot = FakeBot()
-    message = DummyMessage("/promo FUTURE20", user_id=user.telegram_id)
     await promo_command(message, session, settings, bot)
 
     assert message.answer_calls

@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     backup_retention_days: int = 14
     backup_send_to_admin: bool = True
     backup_directory: str = "./backups"
+    admin_read_models_enabled: bool = True
+    admin_read_models_analytics_interval_minutes: int = Field(default=15, ge=1, le=1440)
+    admin_read_models_support_interval_minutes: int = Field(default=5, ge=1, le=1440)
 
     broadcast_rate_limit_per_second: int = 20
     default_invite_link_ttl_hours: int = 24

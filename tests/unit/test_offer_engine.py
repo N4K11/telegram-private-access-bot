@@ -81,6 +81,7 @@ def test_offer_engine_builds_hero_upgrade_bundle_and_inventory() -> None:
         catalog,
         active_products=active_products,
         primary_channel_id=10,
+        now=datetime(2026, 5, 9, 12, 0, tzinfo=UTC),
     )
 
     assert snapshot.hero_offer is not None

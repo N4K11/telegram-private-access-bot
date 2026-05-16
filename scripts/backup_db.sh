@@ -6,7 +6,25 @@ PROJECT_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 BACKUP_ROOT=${BACKUP_DIRECTORY:-"$PROJECT_ROOT/backups/sql"}
 LABEL=${1:-manual}
 TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
-ARCHIVE_NAME="${LABEL}-db-backup-${TIMESTAMP}.tar.gz"
+REQUESTED_ARCHIVE_NAME=${BACKUP_ARCHIVE_NAME:-}
+if [ -n "$REQUESTED_ARCHIVE_NAME" ]; then
+  case "$REQUESTED_ARCHIVE_NAME" in
+    ""|.*|*..*|*[!A-Za-z0-9._-]*)
+      echo "BACKUP_ARCHIVE_NAME must be a safe file name" >&2
+      exit 64
+      ;;
+  esac
+  case "$REQUESTED_ARCHIVE_NAME" in
+    *.tar.gz) ;;
+    *)
+      echo "BACKUP_ARCHIVE_NAME must end with .tar.gz" >&2
+      exit 64
+      ;;
+  esac
+  ARCHIVE_NAME=$REQUESTED_ARCHIVE_NAME
+else
+  ARCHIVE_NAME="${LABEL}-db-backup-${TIMESTAMP}.tar.gz"
+fi
 ARCHIVE_PATH="$BACKUP_ROOT/$ARCHIVE_NAME"
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/telegram-private-access-bot-backup.XXXXXX")
 DUMP_PATH="$WORK_DIR/database.sql"

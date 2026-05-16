@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 
 from aiogram import Bot, Router
@@ -27,6 +28,16 @@ from app.utils.encoding import safe_ui_text
 logger = logging.getLogger(__name__)
 
 router = Router(name="user_promos")
+
+
+@dataclass(slots=True)
+class FreeDaysSuccessPreview:
+    promo_code: str
+    is_extension: bool
+    channel_id: int
+    channel_title: str | None
+    bonus_days: int
+    expires_at: datetime
 
 
 @router.message(Command("promo"))
@@ -93,6 +104,12 @@ async def promo_command(
         await message.answer("Не удалось применить промокод из-за внутренней ошибки.")
         return
 
+    free_days_preview = (
+        _build_free_days_success_preview(result)
+        if result.action == "granted_free_days"
+        else None
+    )
+
     if result.action == "pending_discount":
         await message.answer(_render_pending_discount_text(result, timezone=settings.timezone))
         return
@@ -125,7 +142,7 @@ async def promo_command(
 
     await message.answer(
         _render_free_days_success_text(
-            result,
+            free_days_preview,
             timezone=settings.timezone,
             invite_link=invite_link,
             invite_expires_at=invite_expires_at,
@@ -199,32 +216,46 @@ def _preview_tariff_price(promo_code, *, original_amount: int) -> int:
     return original_amount
 
 
+def _build_free_days_success_preview(result: PromoApplyResult) -> FreeDaysSuccessPreview:
+    assert result.subscription_change is not None
+    tariff = result.promo_code.tariff
+    assert tariff is not None
+    channel = tariff.channel
+    assert channel is not None
+    return FreeDaysSuccessPreview(
+        promo_code=result.promo_code.code,
+        is_extension=result.subscription_change.is_extension,
+        channel_id=tariff.channel_id,
+        channel_title=channel.title,
+        bonus_days=result.promo_code.value,
+        expires_at=result.subscription_change.subscription.expires_at,
+    )
+
+
 def _render_free_days_success_text(
-    result: PromoApplyResult,
+    preview: FreeDaysSuccessPreview | None,
     *,
     timezone: str,
     invite_link: str | None,
     invite_expires_at: datetime | None,
     invite_error: str | None,
 ) -> str:
-    assert result.subscription_change is not None
-    tariff = result.promo_code.tariff
-    assert tariff is not None and tariff.channel is not None
+    assert preview is not None
 
     action = (
         "Подписка продлена."
-        if result.subscription_change.is_extension
+        if preview.is_extension
         else "Подписка активирована."
     )
     lines = [
-        f"🎟 Промокод {result.promo_code.code} активирован.",
+        f"🎟 Промокод {preview.promo_code} активирован.",
         "",
         action,
-        f"Канал: {safe_ui_text(tariff.channel.title, f'Канал #{tariff.channel_id}')}",
-        f"Бонус: {result.promo_code.value} дн.",
+        f"Канал: {safe_ui_text(preview.channel_title, f'Канал #{preview.channel_id}')}",
+        f"Бонус: {preview.bonus_days} дн.",
         (
             "Доступ активен до: "
-            f"{format_datetime(result.subscription_change.subscription.expires_at, timezone)}"
+            f"{format_datetime(preview.expires_at, timezone)}"
         ),
     ]
     if invite_link is not None:

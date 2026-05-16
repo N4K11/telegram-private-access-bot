@@ -11,6 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.db.models import BackupRecord, Channel, Payment, Subscription, User
 from app.runtime_state import snapshot_runtime_state
+from app.services.admin_read_model_reporting import (
+    build_admin_read_model_drift_digest,
+    build_admin_read_model_drift_summary,
+    build_admin_read_model_watchlist_digest,
+    build_admin_read_model_watchlist_summary,
+    load_admin_read_model_alert_summary,
+)
 from app.utils.datetime import ensure_aware_utc, format_datetime, resolve_timezone, utcnow
 
 MetricStatus = Literal["ok", "fail", "info", "warn"]
@@ -195,6 +202,134 @@ async def build_admin_health_report(
             details=backup_details,
         )
     )
+
+    if store_probe.readable:
+        read_model_summary = await load_admin_read_model_alert_summary(
+            session,
+            now=current_time,
+        )
+        if read_model_summary is None:
+            metrics.append(
+                HealthMetric(
+                    label="Read-model snapshots",
+                    status="warn",
+                    details="ещё не материализованы",
+                )
+            )
+        elif read_model_summary.has_alerts:
+            details = (
+                f"alerts {read_model_summary.alert_count} · "
+                f"stale {read_model_summary.stale_count} · "
+                f"missing {read_model_summary.missing_count} · "
+                f"budget {read_model_summary.budget_exceeded_count}"
+            )
+            if read_model_summary.top_attention_label:
+                details += f" · top {escape(read_model_summary.top_attention_label)}"
+            metrics.append(
+                HealthMetric(
+                    label="Read-model snapshots",
+                    status="warn",
+                    details=details,
+                )
+            )
+        else:
+            details = "healthy"
+            if read_model_summary.generated_at_label:
+                details += f" · {read_model_summary.generated_at_label}"
+            metrics.append(
+                HealthMetric(
+                    label="Read-model snapshots",
+                    status="ok",
+                    details=details,
+                )
+            )
+        read_model_watchlist_summary = await build_admin_read_model_watchlist_summary(
+            session,
+            settings=settings,
+            now=current_time,
+            limit=3,
+            source="snapshot",
+        )
+        if read_model_watchlist_summary.has_alerts:
+            watchlist_digest = build_admin_read_model_watchlist_digest(
+                read_model_watchlist_summary,
+                max_items=3,
+            )
+            details = watchlist_digest.summary_line
+            if watchlist_digest.top_label:
+                details += f" · top {escape(watchlist_digest.top_label)}"
+            metrics.append(
+                HealthMetric(
+                    label="Read-model watchlist",
+                    status="warn",
+                    details=details,
+                )
+            )
+        else:
+            details = "clear"
+            if read_model_watchlist_summary.generated_at_label:
+                details += f" · {read_model_watchlist_summary.generated_at_label}"
+            metrics.append(
+                HealthMetric(
+                    label="Read-model watchlist",
+                    status="ok",
+                    details=details,
+                )
+            )
+        read_model_drift_summary = await build_admin_read_model_drift_summary(
+            session,
+            settings=settings,
+            now=current_time,
+            limit=3,
+        )
+        if read_model_drift_summary.has_regressions:
+            drift_digest = build_admin_read_model_drift_digest(
+                read_model_drift_summary,
+                max_items=3,
+            )
+            details = drift_digest.summary_line
+            if drift_digest.top_label:
+                details += f" · top {escape(drift_digest.top_label)}"
+            metrics.append(
+                HealthMetric(
+                    label="Read-model drift",
+                    status="warn",
+                    details=details,
+                )
+            )
+        else:
+            details = "stable"
+            if read_model_drift_summary.generated_at_label:
+                details += f" · {read_model_drift_summary.generated_at_label}"
+            metrics.append(
+                HealthMetric(
+                    label="Read-model drift",
+                    status="ok",
+                    details=details,
+                )
+            )
+    else:
+        metrics.append(
+            HealthMetric(
+                label="Read-model snapshots",
+                status="warn",
+                details="недоступно",
+            )
+        )
+        metrics.append(
+            HealthMetric(
+                label="Read-model watchlist",
+                status="warn",
+                details="недоступно",
+            )
+        )
+        metrics.append(
+            HealthMetric(
+                label="Read-model drift",
+                status="warn",
+                details="недоступно",
+            )
+        )
 
     summary_ok = all(metric.status != "fail" for metric in metrics)
     return AdminHealthReport(metrics=tuple(metrics), summary_ok=summary_ok)

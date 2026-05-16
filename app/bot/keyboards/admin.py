@@ -50,6 +50,116 @@ def admin_section_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def admin_observability_keyboard(
+    *,
+    read_model_view: str | None = None,
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if read_model_view == "drift":
+        builder.button(
+            text="📦 Snapshot overview",
+            callback_data="menu:admin:observability:read-models",
+        )
+        builder.button(
+            text="⚠️ Watchlist",
+            callback_data="menu:admin:observability:read-models:watchlist",
+        )
+        builder.button(
+            text="🛠 Actions",
+            callback_data="menu:admin:observability:read-models:actions",
+        )
+    elif read_model_view == "live":
+        builder.button(
+            text="📦 Snapshot overview",
+            callback_data="menu:admin:observability:read-models",
+        )
+        builder.button(
+            text="⚠️ Watchlist",
+            callback_data="menu:admin:observability:read-models:watchlist",
+        )
+        builder.button(
+            text="🛠 Actions",
+            callback_data="menu:admin:observability:read-models:actions",
+        )
+        builder.button(
+            text="🧪 Snapshot vs live",
+            callback_data="menu:admin:observability:read-models:drift",
+        )
+    elif read_model_view == "watchlist":
+        builder.button(
+            text="📦 Snapshot overview",
+            callback_data="menu:admin:observability:read-models",
+        )
+        builder.button(
+            text="🛠 Actions",
+            callback_data="menu:admin:observability:read-models:actions",
+        )
+        builder.button(
+            text="🔄 Live overview",
+            callback_data="menu:admin:observability:read-models:live",
+        )
+        builder.button(
+            text="🧪 Snapshot vs live",
+            callback_data="menu:admin:observability:read-models:drift",
+        )
+    elif read_model_view == "actions":
+        builder.button(
+            text="📦 Snapshot overview",
+            callback_data="menu:admin:observability:read-models",
+        )
+        builder.button(
+            text="⚠️ Watchlist",
+            callback_data="menu:admin:observability:read-models:watchlist",
+        )
+        builder.button(
+            text="🔄 Live overview",
+            callback_data="menu:admin:observability:read-models:live",
+        )
+        builder.button(
+            text="🧪 Snapshot vs live",
+            callback_data="menu:admin:observability:read-models:drift",
+        )
+    elif read_model_view == "overview":
+        builder.button(
+            text="⚠️ Watchlist",
+            callback_data="menu:admin:observability:read-models:watchlist",
+        )
+        builder.button(
+            text="🛠 Actions",
+            callback_data="menu:admin:observability:read-models:actions",
+        )
+        builder.button(
+            text="🔄 Live overview",
+            callback_data="menu:admin:observability:read-models:live",
+        )
+        builder.button(
+            text="🧪 Snapshot vs live",
+            callback_data="menu:admin:observability:read-models:drift",
+        )
+    else:
+        builder.button(
+            text="🗂 Read-models",
+            callback_data="menu:admin:observability:read-models",
+        )
+        builder.button(
+            text="⚠️ Watchlist",
+            callback_data="menu:admin:observability:read-models:watchlist",
+        )
+        builder.button(
+            text="🔄 Обновить",
+            callback_data="menu:admin:observability",
+        )
+
+    if read_model_view is not None:
+        builder.button(
+            text="⬅️ Наблюдаемость",
+            callback_data="menu:admin:observability",
+        )
+    builder.button(text=ADMIN_HOME_TEXT, callback_data="menu:admin:home")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 def admin_form_keyboard(*, back_callback: str) -> InlineKeyboardMarkup:
     return build_navigation_keyboard(
         include_back=True,

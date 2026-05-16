@@ -26,47 +26,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install .[dev]
 
-      - name: Compile sources
-        run: python -m compileall -q app tests alembic
+      - name: Quality gate
+        run: python -m app.tools.quality_gate --summary-json .tmp/quality-gate.json
 
-      - name: Ruff
-        run: ruff check .
-
-      - name: Pytest
-        run: pytest -q -p no:cacheprovider
-
-      - name: Alembic smoke
-        run: python -m alembic upgrade head
-
-      - name: Repository sanity
-        shell: bash
-        run: |
-          test ! -f .env
-          test ! -f data/db.json
-          test -f README.md
-          test -f RUNTIME_MAP.md
-          test -f DIAGNOSTICS.md
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          token_pattern = re.compile(r"\b\d{8,10}:[A-Za-z0-9_-]{20,}\b")
-          tracked_roots = [Path('app'), Path('tests'), Path('alembic'), Path('scripts'), Path('.github')]
-          for root in tracked_roots:
-              if not root.exists():
-                  continue
-              for path in root.rglob('*'):
-                  if not path.is_file():
-                      continue
-                  if path.suffix in {'.png', '.zip', '.pyc'}:
-                      continue
-                  data = path.read_bytes()
-                  if path.suffix == '.sh' and b'\r\n' in data:
-                      raise SystemExit(f'CRLF detected in shell script: {path}')
-                  try:
-                      text = data.decode('utf-8')
-                  except UnicodeDecodeError:
-                      continue
-                  if token_pattern.search(text):
-                      raise SystemExit(f'Token-like pattern detected in: {path}')
-          PY
+      - name: Upload quality gate summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-gate-summary
+          path: .tmp/quality-gate.json
+          if-no-files-found: error

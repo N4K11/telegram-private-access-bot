@@ -33,7 +33,7 @@ def _profile_callback(user_id: int, filter_key: str, page: int) -> str:
 def admin_analytics_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="👥 Пользователи", callback_data="menu:admin:users")
-    builder.button(text="🔄 Обновить", callback_data="menu:admin:analytics")
+    builder.button(text="🔄 Обновить", callback_data="menu:admin:analytics:refresh")
     builder.button(text="Главное меню", callback_data="menu:admin:home")
     builder.adjust(1)
     return builder.as_markup()

@@ -85,8 +85,15 @@ If `BOT_TOKEN` and `ADMIN_IDS` are available in the environment, the script also
 - valid Mini App auth;
 - `/api/bootstrap` and own profile access;
 - non-admin `403` on `/api/admin/dashboard`;
-- admin access to dashboard, users, payments and support inbox;
+- admin access to dashboard, lifecycle, users, payments, support inbox and support insights;
 - optional support ticket detail, when at least one open ticket exists.
+
+The smoke output now also prints:
+
+- `Deploy stamp`;
+- `Rollback backup`;
+- `Smoke summary`, when `SMOKE_SUMMARY_PATH` is set by `scripts/deploy.sh`;
+- latency baseline for `/healthz`, `/readyz`, Mini App page, webhook and authorized admin endpoints.
 
 Optional overrides:
 
@@ -104,4 +111,4 @@ Optional overrides:
 ## Deploy script
 
 For non-container systemd deployments you can use `scripts/deploy.sh`.
-It pulls the repo, installs dependencies, runs compile/lint/tests, applies Alembic, runs `python -m app.healthcheck`, creates a pre-deploy backup, restarts the service and, in webhook mode, executes the runtime smoke automatically.
+It pulls the repo, installs dependencies, runs `python -m app.tools.quality_gate --summary-json "$QUALITY_GATE_SUMMARY_PATH"` (scoped compile/lint/repo-sanity/tests, Alembic, healthcheck and text scan with per-step timing summary), writes a machine-readable quality summary to `backups/deploy/quality-gate-$DEPLOY_STAMP.json`, creates a deterministic `predeploy-$DEPLOY_STAMP-db-backup.tar.gz` backup, writes rollback notes to `backups/deploy/rollback-$DEPLOY_STAMP.txt`, restarts the service and, in webhook mode, executes the runtime smoke automatically. When webhook smoke runs, it writes `backups/deploy/smoke-$DEPLOY_STAMP.json` with deploy stamp, rollback backup, checked runtime surface and latency baseline.

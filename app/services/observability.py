@@ -9,7 +9,27 @@ from html import escape
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import Settings
 from app.runtime_state import CriticalErrorRecord, WorkerStatusRecord, snapshot_runtime_state
+from app.services.admin_read_model_reporting import (
+    AdminReadModelActionSummary,
+    AdminReadModelAlertSummary,
+    AdminReadModelDriftSummary,
+    AdminReadModelFocusSummary,
+    AdminReadModelOperatorDigest,
+    AdminReadModelWatchlistSummary,
+    build_admin_read_model_action_digest,
+    build_admin_read_model_action_summary,
+    build_admin_read_model_drift_digest,
+    build_admin_read_model_drift_summary,
+    build_admin_read_model_focus_summary,
+    build_admin_read_model_operator_digest,
+    build_admin_read_model_watchlist_digest,
+    build_admin_read_model_watchlist_summary,
+    load_admin_read_model_alert_summary,
+)
 from app.utils.datetime import format_datetime
 
 EVENT_PAYMENT_STARS_PAID = "payment_stars_paid"
@@ -44,6 +64,12 @@ class AdminObservabilityReport:
     last_backup_result_status: str | None
     last_backup_result_details: str | None
     critical_webhook_enabled: bool
+    read_model_summary: AdminReadModelAlertSummary | None
+    read_model_focus: AdminReadModelFocusSummary | None
+    read_model_operator_digest: AdminReadModelOperatorDigest | None
+    read_model_watchlist: AdminReadModelWatchlistSummary | None
+    read_model_actions: AdminReadModelActionSummary | None
+    read_model_drift: AdminReadModelDriftSummary | None
 
 
 def sanitize_observability_text(text: str | None) -> str:
@@ -104,11 +130,57 @@ def emit_critical_error_webhook(
         return False
 
 
-def build_admin_observability_report(
+async def build_admin_observability_report(
+    session: AsyncSession | None = None,
     *,
+    settings: Settings | None = None,
+    viewer_role: str = "owner",
     critical_error_webhook_url: str | None,
+    now: datetime | None = None,
 ) -> AdminObservabilityReport:
     runtime = snapshot_runtime_state()
+    read_model_summary = None
+    read_model_focus = None
+    read_model_operator_digest = None
+    read_model_watchlist = None
+    read_model_actions = None
+    read_model_drift = None
+    if session is not None:
+        read_model_summary = await load_admin_read_model_alert_summary(session, now=now)
+        if settings is not None:
+            read_model_watchlist = await build_admin_read_model_watchlist_summary(
+                session,
+                settings=settings,
+                viewer_role=viewer_role,
+                now=now,
+                limit=3,
+                source="snapshot",
+            )
+            read_model_actions = await build_admin_read_model_action_summary(
+                session,
+                settings=settings,
+                viewer_role=viewer_role,
+                now=now,
+                limit=3,
+                source="live",
+            )
+            read_model_drift = await build_admin_read_model_drift_summary(
+                session,
+                settings=settings,
+                viewer_role=viewer_role,
+                now=now,
+                limit=5,
+            )
+            read_model_focus = build_admin_read_model_focus_summary(
+                watchlist_summary=read_model_watchlist,
+                action_summary=read_model_actions,
+                drift_summary=read_model_drift,
+            )
+            read_model_operator_digest = build_admin_read_model_operator_digest(
+                watchlist_summary=read_model_watchlist,
+                action_summary=read_model_actions,
+                drift_summary=read_model_drift,
+            )
     return AdminObservabilityReport(
         recent_errors=runtime.recent_critical_errors[:20],
         worker_statuses=runtime.worker_statuses,
@@ -118,43 +190,49 @@ def build_admin_observability_report(
         last_backup_result_status=runtime.last_backup_result_status,
         last_backup_result_details=runtime.last_backup_result_details,
         critical_webhook_enabled=bool(critical_error_webhook_url),
+        read_model_summary=read_model_summary,
+        read_model_focus=read_model_focus,
+        read_model_operator_digest=read_model_operator_digest,
+        read_model_watchlist=read_model_watchlist,
+        read_model_actions=read_model_actions,
+        read_model_drift=read_model_drift,
     )
 
 
 def render_admin_observability_report(report: AdminObservabilityReport, *, timezone: str) -> str:
-    lines = ["🚨 Наблюдаемость", ""]
+    lines = ["Observability", ""]
     lines.append(
-        "Critical webhook: включён"
+        "Critical webhook: enabled"
         if report.critical_webhook_enabled
-        else "Critical webhook: выключен"
+        else "Critical webhook: disabled"
     )
     lines.append("")
-    lines.append("Последние ошибки:")
+    lines.append("Recent errors:")
     if not report.recent_errors:
-        lines.append("— Критических ошибок пока нет")
+        lines.append("- No critical errors yet")
     else:
         for item in report.recent_errors:
             lines.append(
-                f"• {format_datetime(item.occurred_at, timezone)} · "
-                f"<code>{escape(item.event_name)}</code> · "
-                f"{escape(item.source)} · {escape(item.message)}"
+                f"- {format_datetime(item.occurred_at, timezone)} | "
+                f"<code>{escape(item.event_name)}</code> | "
+                f"{escape(item.source)} | {escape(item.message)}"
             )
 
     lines.append("")
-    lines.append("Статусы воркеров:")
+    lines.append("Worker statuses:")
     if not report.worker_statuses:
-        lines.append("— Ещё не зафиксированы")
+        lines.append("- No worker statuses recorded")
     else:
         for item in report.worker_statuses:
-            details = escape(item.details) if item.details else "без деталей"
+            details = escape(item.details) if item.details else "no details"
             lines.append(
                 f"{_worker_status_icon(item.status)} {escape(item.name)}: "
-                f"{details} · {format_datetime(item.updated_at, timezone)}"
+                f"{details} | {format_datetime(item.updated_at, timezone)}"
             )
 
     lines.append("")
     lines.append(
-        "Последняя Telegram API ошибка: "
+        "Last Telegram API error: "
         + _render_optional_error(
             report.last_telegram_api_error_at,
             report.last_telegram_api_error,
@@ -162,7 +240,7 @@ def render_admin_observability_report(report: AdminObservabilityReport, *, timez
         )
     )
     lines.append(
-        "Последний backup: "
+        "Last backup: "
         + _render_backup_result(
             report.last_backup_result_at,
             report.last_backup_result_status,
@@ -170,21 +248,133 @@ def render_admin_observability_report(report: AdminObservabilityReport, *, timez
             timezone,
         )
     )
+    lines.append("")
+    lines.extend(_render_read_model_section(report))
     return "\n".join(lines)
+
+
+def _render_read_model_section(report: AdminObservabilityReport) -> list[str]:
+    lines = ["Read-models:"]
+    summary = report.read_model_summary
+    if summary is None:
+        lines.append("- snapshot summary unavailable")
+    else:
+        lines.append(
+            "- snapshots: "
+            f"alerts {summary.alert_count} | "
+            f"stale {summary.stale_count} | "
+            f"missing {summary.missing_count} | "
+            f"budget {summary.budget_exceeded_count}"
+        )
+        if summary.generated_at_label:
+            lines.append(f"- snapshot generated: {escape(summary.generated_at_label)}")
+        if summary.top_attention_label:
+            lines.append(
+                "- top snapshot risk: "
+                f"{escape(summary.top_attention_label)}"
+                f" | {escape(summary.top_attention_status_label or 'alert')}"
+            )
+
+    if report.read_model_focus is not None:
+        lines.append(
+            "- focus: "
+            f"{escape(report.read_model_focus.line)}"
+        )
+
+    if report.read_model_operator_digest is not None:
+        lines.append(
+            "- summary: "
+            f"{escape(report.read_model_operator_digest.summary_line)}"
+        )
+
+    watchlist = report.read_model_watchlist
+    if watchlist is None:
+        lines.append("- watchlist summary unavailable")
+    else:
+        watchlist_digest = build_admin_read_model_watchlist_digest(
+            watchlist,
+            max_items=0,
+        )
+        lines.append(f"- watchlist: {watchlist_digest.summary_line}")
+        if watchlist_digest.top_label:
+            lines.append(
+                "- top watch: "
+                f"{escape(watchlist_digest.top_label)}"
+                f" | {escape(watchlist_digest.top_detail or 'watch item')}"
+            )
+        for item_line in watchlist_digest.item_lines:
+            lines.append(f"- watch item: {escape(item_line)}")
+
+    actions = report.read_model_actions
+    if actions is None:
+        lines.append("- action digest unavailable")
+    else:
+        action_digest = build_admin_read_model_action_digest(actions, max_items=0)
+        lines.append(
+            f"- actions: {action_digest.summary_line}"
+        )
+        for item_line in action_digest.item_lines:
+            lines.append(
+                "- action: "
+                f"{escape(item_line)}"
+            )
+
+    drift = report.read_model_drift
+    if drift is None:
+        lines.append("- live drift compare unavailable")
+    else:
+        drift_digest = build_admin_read_model_drift_digest(drift, max_items=0)
+        lines.append(
+            f"- drift: {drift_digest.extended_summary_line}"
+        )
+        if drift.generated_at_label:
+            lines.append(f"- drift generated: {escape(drift.generated_at_label)}")
+        if drift_digest.top_label:
+            lines.append(
+                "- top drift: "
+                f"{escape(drift_digest.top_label)}"
+                f" | {escape(drift_digest.top_detail or 'drift detected')}"
+            )
+        elif drift.top_budget_regression_label:
+            lines.append(
+                "- budget regression: "
+                f"{escape(drift.top_budget_regression_label)}"
+            )
+        if drift.top_query_regression_label:
+            lines.append(
+                "- query regression: "
+                f"{escape(drift.top_query_regression_label)}"
+            )
+        if drift.top_payload_regression_label:
+            lines.append(
+                "- payload regression: "
+                f"{escape(drift.top_payload_regression_label)}"
+            )
+        if drift.top_build_regression_label:
+            lines.append(
+                "- build regression: "
+                f"{escape(drift.top_build_regression_label)}"
+            )
+        for item_line in drift_digest.item_lines:
+            lines.append(
+                "- drift item: "
+                f"{escape(item_line)}"
+            )
+    return lines
 
 
 def _worker_status_icon(status: str) -> str:
     return {
-        "ok": "✅",
-        "warn": "⚠️",
-        "fail": "❌",
-    }.get(status, "ℹ️")
+        "ok": "OK",
+        "warn": "WARN",
+        "fail": "FAIL",
+    }.get(status, "INFO")
 
 
 def _render_optional_error(at: datetime | None, message: str | None, timezone: str) -> str:
     if at is None or not message:
-        return "не было"
-    return f"{format_datetime(at, timezone)} · {escape(message)}"
+        return "none"
+    return f"{format_datetime(at, timezone)} | {escape(message)}"
 
 
 def _render_backup_result(
@@ -194,10 +384,10 @@ def _render_backup_result(
     timezone: str,
 ) -> str:
     if at is None or not status:
-        return "ещё не выполнялся"
+        return "not run yet"
     label = {
-        "ok": "успешно",
-        "fail": "ошибка",
+        "ok": "ok",
+        "fail": "failed",
     }.get(status, status)
-    suffix = f" · {escape(details)}" if details else ""
-    return f"{label} · {format_datetime(at, timezone)}{suffix}"
+    suffix = f" | {escape(details)}" if details else ""
+    return f"{label} | {format_datetime(at, timezone)}{suffix}"

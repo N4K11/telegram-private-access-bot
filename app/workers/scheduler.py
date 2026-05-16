@@ -16,6 +16,7 @@ from app.runtime_state import (
     record_maintenance_run,
     record_worker_status,
 )
+from app.services.admin_read_model_refresh import refresh_admin_read_models
 from app.services.channel_guard_service import run_channel_guard_cycle
 from app.services.observability import EVENT_WORKER_CYCLE_FAILED
 from app.services.payments.crypto_pay import reconcile_active_crypto_invoices
@@ -246,6 +247,35 @@ async def run_background_workers(
             logger.exception(
                 "Admin report worker cycle failed",
                 extra={"event_name": EVENT_WORKER_CYCLE_FAILED, "worker_name": "admin_reports"},
+            )
+
+        try:
+            async with session_factory() as session:
+                read_model_result = await refresh_admin_read_models(
+                    session,
+                    settings=settings,
+                )
+                if read_model_result.has_work:
+                    details = (
+                        f"analytics={int(read_model_result.refreshed_analytics)}, "
+                        f"lifecycle_views={read_model_result.lifecycle_views}, "
+                        f"support_views={read_model_result.support_views}"
+                    )
+                else:
+                    details = "up-to-date"
+                record_worker_status("admin_read_models", "ok", details=details)
+                has_active_work = has_active_work or read_model_result.has_work
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            details = f"{exc.__class__.__name__}: {exc}"
+            record_worker_status("admin_read_models", "fail", details=details)
+            logger.exception(
+                "Admin read-model worker cycle failed",
+                extra={
+                    "event_name": EVENT_WORKER_CYCLE_FAILED,
+                    "worker_name": "admin_read_models",
+                },
             )
 
         try:
